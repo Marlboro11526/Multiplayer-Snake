@@ -1,17 +1,26 @@
 import React from "react";
+import { useEffect } from "react";
 
-import { useSelector } from 'react-redux'
 import { Arena } from "./Arena";
 import { Landing } from './Landing'
+import { Gateway } from './Gateway';
+
+import { Routes, Route } from "react-router-dom";
+
 
 function Game() {
-	console.debug("GAME");
-	const player_name = useSelector((state) => state.userState.name);
-	if(player_name) {
-		return <Arena />
-	} else {
-		return <Landing />
-	}
+	
+	useEffect(() => {
+		let gateway = new Gateway();
+		gateway.start();
+	});
+
+	return (
+		<Routes>
+			<Route path='arena' element={<Arena />}/>
+			<Route path='landing' element={<Landing />}/>
+		</Routes>
+	)
 }
 
 export default Game;

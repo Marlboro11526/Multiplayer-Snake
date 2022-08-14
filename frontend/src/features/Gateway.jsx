@@ -1,5 +1,6 @@
 import { backendUrl } from '../routes'
-class Gateway {
+export class Gateway {
+
     constructor () {
         if(Gateway.exists) {
             return Gateway.instance;
@@ -11,11 +12,10 @@ class Gateway {
         this.connected = false;
         this.auto_restart = true;
         this.callbacks = [];
-
     }
 
     start() {
-        this.connection = WebSocket(backendUrl);
+        this.connection = new WebSocket(backendUrl);
 
         this.connection.onopen
     }

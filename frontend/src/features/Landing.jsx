@@ -1,5 +1,50 @@
 import React from "react"
+import { useEffect } from "react";
+import { useState } from "react";
+import { useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
+import { MessageCode } from "../config";
+import { playerNameSelector } from "../redux_logic/selectors";
+import Gateway from "./Gateway";
 
 export function Landing() {
-    return <div>Landing page</div>
+
+    const player_name = useSelector(playerNameSelector);
+    const [name, setName] = useState('');
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        if(player_name != null) {
+            navigate('arena');
+        }
+    },[player_name]);
+
+    const detectStart = (e) => {
+        let code = e.which || e.keyCode;
+
+        if(code === 13) {
+            let gateway = new Gateway();
+            gateway.send({
+                'code' : MessageCode.Register,
+                'payload' : {
+                    'name' : name,
+                },
+            });
+            navigate('arena');
+        }
+    }
+
+    return (
+        <div className='landing'>
+            <div className='register'>
+                <input 
+                    id='name-input'
+                    type='text'
+                    placeholder='enter name and hit enter'
+                    value={name}
+                    onChange={(event) => setName(event.target.value)} 
+                    onKeyUp={detectStart}/>
+            </div>
+        </div>
+    )
 }
