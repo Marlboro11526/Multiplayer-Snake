@@ -1,6 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit'
-import gameStateReducer from './reducers/gameStateSlice';
-import userStateReducer from './reducers/userSlice';
+import gameStateReducer from './gameStateSlice';
+import userStateReducer from './userSlice';
 
 export default configureStore({
   reducer: {
