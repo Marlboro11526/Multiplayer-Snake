@@ -1,12 +1,13 @@
 pub mod messages;
 pub mod snake;
 
-use std::{fmt, net::SocketAddr, sync::Arc, collections::VecDeque, time::Duration};
-use dashmap::{DashSet, DashMap};
+use std::{fmt, net::SocketAddr, sync::{Arc}, collections::VecDeque, time::Duration};
+use dashmap::DashMap;
 use error_stack::{Context, IntoReport, Report, Result, ResultExt};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
-use tokio::{net::{TcpListener, TcpStream}, time::sleep};
+use tokio::{net::{TcpListener, TcpStream}, time::sleep, io::AsyncWriteExt};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use log::{debug, error, info};
 use uuid::Uuid;
 
@@ -21,7 +22,7 @@ pub struct Args {
 
     /// Maximum players count
     #[clap(short='c', value_parser, default_value_t = 25)]
-    max_players_count: u8,
+    max_players_count: usize,
 
     /// Field width in blocks
     #[clap(short='w', value_parser, default_value_t = 15)]
@@ -36,21 +37,54 @@ pub struct Args {
     game_tick: u64,
 }
 
+#[repr(u8)]
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Direction {
+    Up = 0,
+    Right = 1,
+    Down = 2,
+    Left = 3,
+}
+
+type Point = (u8, u8);
+type Colour = (u8, u8, u8);
+
+
 pub struct Server {
     args: Args,
     state: Arc<State>,
 }
 
+struct PlayerData {
+    snake: Snake,
+    last_move: Option<Direction>,
+    tx: Sender<()>,
+    rx: Receiver<()>,
+}
+
+impl PlayerData {
+    fn new(starting_point: Point, colour: Colour, direction: Direction) -> Self {
+        let (tx, rx) = channel::<()>(1);
+        PlayerData { 
+            snake: Snake::new(
+                VecDeque::from([starting_point]), 
+                colour, 
+                direction),
+            last_move: None, 
+            tx, 
+            rx}
+    }
+}
+
 struct State {
-    players: DashMap<Uuid, Snake>,
-    moves: DashMap<Uuid, Direction>,
+    players: DashMap<Uuid, PlayerData>,
 }
 
 impl State {
     fn new() -> Self {
         State {
             players: DashMap::new(),
-            moves: DashMap::new(),
+            
         }
     }
 }
@@ -122,7 +156,17 @@ impl Server {
         Ok(())
     }
 
-    async fn handle_connection(self :Arc<Self>, stream: TcpStream, addr: SocketAddr) -> Result<(), ConnectionError> {
+    async fn handle_connection(self :Arc<Self>, mut stream: TcpStream, addr: SocketAddr) -> Result<(), ConnectionError> {
+        
+        if self.state.players.len() == self.args.max_players_count {
+            debug!("Connection limit reached. Disconnecting {}", addr);
+            _ = stream.shutdown().await;
+            return Ok(())
+        }
+
+        loop {
+            
+        }
         sleep(Duration::from_secs(100)).await;
         Ok(())
     }
@@ -137,15 +181,3 @@ impl Server {
     }
 
 }
-
-#[repr(u8)]
-#[derive(Serialize, Deserialize, Debug)]
-pub enum Direction {
-    Up = 0,
-    Right = 1,
-    Down = 2,
-    Left = 3,
-}
-
-type Point = (u8, u8);
-type Colour = (u8, u8, u8);
