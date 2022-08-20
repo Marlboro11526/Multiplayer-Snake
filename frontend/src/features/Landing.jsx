@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { useState } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { MessageCode } from "../config";
 import { playerNameSelector } from "../redux_logic/selectors";
 import Gateway from "./Gateway";
 
@@ -25,8 +24,7 @@ export function Landing() {
         if(code === 13) {
             let gateway = new Gateway();
             gateway.send({
-                'code' : MessageCode.Register,
-                'payload' : {
+                'Register' : {
                     'name' : name,
                 },
             });

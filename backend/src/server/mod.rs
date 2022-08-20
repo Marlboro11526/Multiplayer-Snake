@@ -1,12 +1,16 @@
 pub mod messages;
 pub mod snake;
 
-use std::{fmt, net::SocketAddr, sync::Arc};
+use std::{fmt, net::SocketAddr, sync::Arc, collections::VecDeque, time::Duration};
+use dashmap::{DashSet, DashMap};
 use error_stack::{Context, IntoReport, Report, Result, ResultExt};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{net::{TcpListener, TcpStream}, time::sleep};
 use log::{debug, error, info};
+use uuid::Uuid;
+
+use self::snake::Snake;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -29,7 +33,7 @@ pub struct Args {
 
     /// Game tick in miliseconds
     #[clap(short='t', value_parser, default_value_t = 500)]
-    game_tick: u16,
+    game_tick: u64,
 }
 
 pub struct Server {
@@ -38,12 +42,16 @@ pub struct Server {
 }
 
 struct State {
-
+    players: DashMap<Uuid, Snake>,
+    moves: DashMap<Uuid, Direction>,
 }
 
 impl State {
     fn new() -> Self {
-        State {}
+        State {
+            players: DashMap::new(),
+            moves: DashMap::new(),
+        }
     }
 }
 
@@ -52,6 +60,9 @@ pub struct ServerError;
 
 #[derive(Debug)]
 pub struct ConnectionError;
+
+#[derive(Debug)]
+pub struct GameError;
 
 impl fmt::Display for ServerError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -63,10 +74,17 @@ impl fmt::Display for ConnectionError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str("Connection error")
     }
+
+}
+impl fmt::Display for GameError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.write_str("Game error")
+    }
 }
 
 impl Context for ServerError {}
 impl Context for ConnectionError {}
+impl Context for GameError {}
 
 impl Server {
     pub fn new(args: Args) -> Self {
@@ -76,7 +94,7 @@ impl Server {
         }
     }
 
-    pub async fn run(&self) -> Result<(), ServerError> {
+    pub async fn run(self: &Arc<Self>) -> Result<(), ServerError> {
         let addr = format!("127.0.0.1:{}", self.args.port).to_string();
         let listener = TcpListener::bind(&addr)
             .await
@@ -88,8 +106,11 @@ impl Server {
         info!("Server listening on {:?}", listener.local_addr());
 
         while let Ok((stream, addr)) = listener.accept().await {
+            debug!("New connection from {}", addr);
+
+            let me = Arc::clone(self);
             tokio::spawn(async move {
-                if let Err(e) = handle_connection(stream, addr)
+                if let Err(e) = me.handle_connection(stream, addr)
                     .await
                     .attach_printable_lazy(|| format!("Error in connection {}", addr)) {
                         info!("{}", e);
@@ -101,10 +122,20 @@ impl Server {
         Ok(())
     }
 
-}
+    async fn handle_connection(self :Arc<Self>, stream: TcpStream, addr: SocketAddr) -> Result<(), ConnectionError> {
+        sleep(Duration::from_secs(100)).await;
+        Ok(())
+    }
 
-async fn handle_connection(stream: TcpStream, addr: SocketAddr) -> Result<(), ConnectionError> {
-    Ok(())
+    async fn game_loop(self: Arc<Self>) -> Result<(), GameError> {
+
+        while !self.state.players.is_empty() {
+            sleep(Duration::from_millis(self.args.game_tick)).await;
+        }
+
+        Ok(())
+    }
+
 }
 
 #[repr(u8)]
