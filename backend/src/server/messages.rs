@@ -12,9 +12,10 @@ pub enum ClientMessage {
     },
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     Register {
-
+        name: String, 
     },
     Turn {
         

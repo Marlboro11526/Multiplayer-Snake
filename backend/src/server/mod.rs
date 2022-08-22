@@ -2,6 +2,7 @@ pub mod messages;
 pub mod snake;
 
 use std::{fmt, net::SocketAddr, sync::{Arc}, collections::VecDeque, time::Duration};
+use futures_util::{SinkExt, StreamExt};
 use dashmap::DashMap;
 use error_stack::{Context, IntoReport, Report, Result, ResultExt};
 use clap::Parser;
@@ -9,9 +10,10 @@ use serde::{Deserialize, Serialize};
 use tokio::{net::{TcpListener, TcpStream}, time::sleep, io::AsyncWriteExt};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use log::{debug, error, info};
+use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
 
-use self::snake::Snake;
+use self::{snake::Snake, messages::{ServerMessage, ClientMessage}};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -89,6 +91,22 @@ impl State {
     }
 }
 
+// type WrappedStream = FramedRead<OwnedReadHalf, LengthDelimitedCodec>;
+// type WrappedSink = FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>;
+
+// type SerStream = Framed<WrappedStream, ClientMessage, (), Json<ClientMessage, ()>>;
+// type DeSink = Framed<WrappedSink, (), ServerMessage, Json<(), ServerMessage>>;
+
+// fn wrap_stream(stream: WebSocketStream<tokio::net::TcpStream>) -> (SerStream, DeSink) {
+//     let (read, write) = stream.split();
+//     let stream = WrappedStream::new(read, LengthDelimitedCodec::new());
+//     let sink = WrappedSink::new(write, LengthDelimitedCodec::new());
+//     (
+//         SerStream::new(stream, Json::default()),
+//         DeSink::new(sink, Json::default()),
+//     )
+// }
+
 #[derive(Debug)]
 pub struct ServerError;
 
@@ -164,10 +182,17 @@ impl Server {
             return Ok(())
         }
 
+        let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
+        let (mut sink, mut stream) = stream.split();
+
         loop {
-            
+            sleep(Duration::from_secs(3)).await;
+            info!("{:?}", stream.next().await);
+            if let Err(e) = sink.send(Message::Text(serde_json::to_string(&ServerMessage::Register { name: "Bartek".into() }).unwrap())).await {
+                error!("{}", e);
+            }
+            sleep(Duration::from_secs(100)).await;
         }
-        sleep(Duration::from_secs(100)).await;
         Ok(())
     }
 

@@ -9,20 +9,30 @@ export class Gateway {
         Gateway.exists = true;
         Gateway.instance = this;
 
+        this.started = false;
         this.connected = false;
         this.auto_restart = true;
         this.callbacks = [];
     }
 
     start() {
-        this.connection = new WebSocket(backendUrl);
-
-        this.connection.onopen
+        if (!this.started) {
+            this.started = true;
+            this.connection = new WebSocket(backendUrl);
+            
+            this.connection.onopen = this.on_open.bind(this);
+            this.connection.onmessage = this.on_message.bind(this);
+            this.connection.onclose = this.on_close.bind(this);
+            this.connection.onerror = this.on_error.bind(this);
+        } 
     }
 
     stop() {
-        this.auto_restart = false;
-        this.connection.close();
+        if (this.started) {
+            this.started = false;
+            this.auto_restart = false;
+            this.connection.close();
+        }
     }
 
     on_open() {
@@ -32,6 +42,8 @@ export class Gateway {
     }
 
     on_message(message) {
+        console.debug(message);
+        console.debug(JSON.parse(message.data));
         for(const cb of this.callbacks) {
             cb(message.data);
         }
