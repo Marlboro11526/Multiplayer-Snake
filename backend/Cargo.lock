@@ -50,6 +50,8 @@ dependencies = [
  "futures",
  "futures-util",
  "log",
+ "parking_lot",
+ "rand",
  "serde",
  "serde_json",
  "tokio",

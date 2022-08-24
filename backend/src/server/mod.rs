@@ -1,17 +1,21 @@
 pub mod messages;
 pub mod snake;
 
-use std::{fmt, net::SocketAddr, sync::{Arc}, collections::VecDeque, time::Duration};
+use std::{fmt, net::SocketAddr, sync::{Arc}, collections::VecDeque, time::Duration, rc::Rc};
 use futures_util::{SinkExt, StreamExt};
 use dashmap::DashMap;
 use error_stack::{Context, IntoReport, Report, Result, ResultExt};
 use clap::Parser;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tokio::{net::{TcpListener, TcpStream}, time::sleep, io::AsyncWriteExt};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use log::{debug, error, info};
 use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
+use rand::Rng;
+use rand::distributions::{Distribution, Standard};
+
 
 use self::{snake::Snake, messages::{ServerMessage, ClientMessage}};
 
@@ -28,11 +32,11 @@ pub struct Args {
 
     /// Field width in blocks
     #[clap(short='w', value_parser, default_value_t = 15)]
-    field_width: u8,
+    field_width: usize,
     
     /// Field height in blocks
     #[clap(short='h', value_parser, default_value_t = 10)]
-    field_height: u8,
+    field_height: usize,
 
     /// Game tick in miliseconds
     #[clap(short='t', value_parser, default_value_t = 500)]
@@ -48,8 +52,49 @@ pub enum Direction {
     Left = 3,
 }
 
-type Point = (u8, u8);
-type Colour = (u8, u8, u8);
+#[derive(Debug, Hash, PartialEq, Eq)]
+pub struct Point {
+    x: u8,
+    y: u8,
+}
+
+#[derive(Debug)]
+pub struct Colour {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+impl Distribution<Direction> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Direction {
+        let rand_direction = rng.gen_range(0..3);
+        match rand_direction {
+            0 => Direction::Up,
+            1 => Direction::Right,
+            2 => Direction::Down,
+            _ => Direction::Left,
+        }
+    }
+}
+
+impl Distribution<Point> for Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Point {
+        let (rand_x, rand_y) = rng.gen();
+        Point {
+            x: rand_x,
+            y: rand_y,
+        }
+    }
+}
+
+impl Distribution<Colour> for Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Colour {
+        let (r, g, b) = rng.gen();
+        Colour {
+            r, g, b
+        }
+    }
+}
 
 
 pub struct Server {
@@ -60,52 +105,34 @@ pub struct Server {
 struct PlayerData {
     snake: Snake,
     last_move: Option<Direction>,
-    tx: Sender<()>,
-    rx: Receiver<()>,
+    tx: Sender<()>
 }
 
 impl PlayerData {
-    fn new(starting_point: Point, colour: Colour, direction: Direction) -> Self {
-        let (tx, rx) = channel::<()>(1);
+    fn new(starting_point: Point, colour: Colour, direction: Direction, tx: Sender<()>) -> Self {
         PlayerData { 
             snake: Snake::new(
                 VecDeque::from([starting_point]), 
                 colour, 
                 direction),
             last_move: None, 
-            tx, 
-            rx}
+            tx}
     }
 }
 
 struct State {
     players: DashMap<Uuid, PlayerData>,
+    map_state: DashMap<Point, Option<&'static Uuid> >
 }
 
 impl State {
-    fn new() -> Self {
+    fn new(args: &Args) -> Self {
         State {
-            players: DashMap::new(),
-            
+            players: DashMap::with_capacity(args.max_players_count),
+            map_state: DashMap::with_capacity(args.field_height * args.field_width)
         }
     }
 }
-
-// type WrappedStream = FramedRead<OwnedReadHalf, LengthDelimitedCodec>;
-// type WrappedSink = FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>;
-
-// type SerStream = Framed<WrappedStream, ClientMessage, (), Json<ClientMessage, ()>>;
-// type DeSink = Framed<WrappedSink, (), ServerMessage, Json<(), ServerMessage>>;
-
-// fn wrap_stream(stream: WebSocketStream<tokio::net::TcpStream>) -> (SerStream, DeSink) {
-//     let (read, write) = stream.split();
-//     let stream = WrappedStream::new(read, LengthDelimitedCodec::new());
-//     let sink = WrappedSink::new(write, LengthDelimitedCodec::new());
-//     (
-//         SerStream::new(stream, Json::default()),
-//         DeSink::new(sink, Json::default()),
-//     )
-// }
 
 #[derive(Debug)]
 pub struct ServerError;
@@ -141,8 +168,8 @@ impl Context for GameError {}
 impl Server {
     pub fn new(args: Args) -> Self {
         Server { 
+            state: Arc::new(State::new(&args)),
             args,
-            state: Arc::new(State::new()),
         }
     }
 
@@ -184,16 +211,65 @@ impl Server {
 
         let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
         let (mut sink, mut stream) = stream.split();
+        let (uuid, mut rx) = self.spawn_payer();
 
         loop {
-            sleep(Duration::from_secs(3)).await;
-            info!("{:?}", stream.next().await);
-            if let Err(e) = sink.send(Message::Text(serde_json::to_string(&ServerMessage::Register { name: "Bartek".into() }).unwrap())).await {
-                error!("{}", e);
+            tokio::select! {
+                _ = rx.recv() => {
+                    // send turn message
+                    todo!();
+                }
+                ws_msg = stream.next() => {
+                    match ws_msg {
+                        Some(msg) => match msg {
+                            Ok(Message::Text(json_str)) => {
+                                let message: ClientMessage = serde_json::from_str(&json_str)
+                                    .report()
+                                    .change_context(ConnectionError)
+                                    .attach_printable_lazy(|| format!("Invalid message body, got {}", json_str))?;
+                            }
+                            _ => {
+                                // invalid message, continue
+                            }
+                        }
+                        None => {
+                            // close connection
+                        }
+                    }
+                }
+                // todo!()
             }
-            sleep(Duration::from_secs(100)).await;
+            // sleep(Duration::from_secs(3)).await;
+            // info!("{:?}", stream.next().await);
+            // if let Err(e) = sink.send(Message::Text(serde_json::to_string(&ServerMessage::Register { name: "Bartek".into() }).unwrap())).await {
+            //     error!("{}", e);
+            // }
+            // sleep(Duration::from_secs(100)).await;
         }
         Ok(())
+    }
+
+    fn spawn_payer(self: Arc<Self>) -> (Uuid, Receiver<()>) {
+        let mut rng = rand::thread_rng();
+
+        let uuid = Uuid::new_v4();
+        let colour: Colour = rng.gen();
+        let direction: Direction = rng.gen();
+        let (tx, rx) = channel::<()>(1);
+        let mut starting_point: Point = rng.gen();
+        while self.state.map_state.contains_key(&starting_point) {
+            starting_point = rng.gen();
+        }
+        let new_player = PlayerData::new(
+            starting_point, 
+            colour,
+            direction,
+            tx,
+        );
+        
+        self.state.players.insert(uuid.clone(), new_player);
+        
+        (uuid, rx)
     }
 
     async fn game_loop(self: Arc<Self>) -> Result<(), GameError> {
