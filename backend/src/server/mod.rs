@@ -1,50 +1,58 @@
 pub mod messages;
 pub mod snake;
 
-use std::{fmt, net::SocketAddr, sync::{Arc}, collections::VecDeque, time::Duration, rc::Rc};
-use futures_util::{SinkExt, StreamExt};
-use dashmap::DashMap;
-use error_stack::{Context, IntoReport, Report, Result, ResultExt};
 use clap::Parser;
-use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
-use tokio::{net::{TcpListener, TcpStream}, time::sleep, io::AsyncWriteExt};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use dashmap::DashMap;
+use error_stack::{bail, Context, IntoReport, Report, Result, ResultExt};
+use futures::stream::{SplitSink, SplitStream};
+use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info};
-use tokio_tungstenite::tungstenite::Message;
-use uuid::Uuid;
-use rand::Rng;
+use parking_lot::RwLock;
 use rand::distributions::{Distribution, Standard};
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::AtomicBool;
+use std::{collections::VecDeque, fmt, net::SocketAddr, rc::Rc, sync::Arc, time::Duration};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpListener, TcpStream},
+    time::sleep,
+};
+use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
+use uuid::Uuid;
 
-
-use self::{snake::Snake, messages::{ServerMessage, ClientMessage}};
+use self::{
+    messages::{ClientMessage, ServerMessage},
+    snake::Snake,
+};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
     /// Port to use
-    #[clap(short='p', value_parser, default_value_t = 43210)]
+    #[clap(short = 'p', value_parser, default_value_t = 43210)]
     port: u16,
 
     /// Maximum players count
-    #[clap(short='c', value_parser, default_value_t = 25)]
+    #[clap(short = 'c', value_parser, default_value_t = 25)]
     max_players_count: usize,
 
     /// Field width in blocks
-    #[clap(short='w', value_parser, default_value_t = 15)]
+    #[clap(short = 'w', value_parser, default_value_t = 15)]
     field_width: usize,
-    
+
     /// Field height in blocks
-    #[clap(short='h', value_parser, default_value_t = 10)]
+    #[clap(short = 'h', value_parser, default_value_t = 10)]
     field_height: usize,
 
     /// Game tick in miliseconds
-    #[clap(short='t', value_parser, default_value_t = 500)]
+    #[clap(short = 't', value_parser, default_value_t = 500)]
     game_tick: u64,
 }
 
 #[repr(u8)]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Direction {
     Up = 0,
     Right = 1,
@@ -90,12 +98,9 @@ impl Distribution<Point> for Standard {
 impl Distribution<Colour> for Standard {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Colour {
         let (r, g, b) = rng.gen();
-        Colour {
-            r, g, b
-        }
+        Colour { r, g, b }
     }
 }
-
 
 pub struct Server {
     args: Args,
@@ -105,31 +110,31 @@ pub struct Server {
 struct PlayerData {
     snake: Snake,
     last_move: Option<Direction>,
-    tx: Sender<()>
+    tx: Sender<()>,
 }
 
 impl PlayerData {
     fn new(starting_point: Point, colour: Colour, direction: Direction, tx: Sender<()>) -> Self {
-        PlayerData { 
-            snake: Snake::new(
-                VecDeque::from([starting_point]), 
-                colour, 
-                direction),
-            last_move: None, 
-            tx}
+        PlayerData {
+            snake: Snake::new(VecDeque::from([starting_point]), colour, direction),
+            last_move: None,
+            tx,
+        }
     }
 }
 
 struct State {
     players: DashMap<Uuid, PlayerData>,
-    map_state: DashMap<Point, Option<&'static Uuid> >
+    map_state: DashMap<Point, Option<&'static Uuid>>,
+    is_running: AtomicBool,
 }
 
 impl State {
     fn new(args: &Args) -> Self {
         State {
             players: DashMap::with_capacity(args.max_players_count),
-            map_state: DashMap::with_capacity(args.field_height * args.field_width)
+            map_state: DashMap::with_capacity(args.field_height * args.field_width),
+            is_running: AtomicBool::new(false),
         }
     }
 }
@@ -153,7 +158,6 @@ impl fmt::Display for ConnectionError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str("Connection error")
     }
-
 }
 impl fmt::Display for GameError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -167,7 +171,7 @@ impl Context for GameError {}
 
 impl Server {
     pub fn new(args: Args) -> Self {
-        Server { 
+        Server {
             state: Arc::new(State::new(&args)),
             args,
         }
@@ -175,81 +179,116 @@ impl Server {
 
     pub async fn run(self: &Arc<Self>) -> Result<(), ServerError> {
         let addr = format!("127.0.0.1:{}", self.args.port).to_string();
-        let listener = TcpListener::bind(&addr)
-            .await
-            .map_err(|e| {
-                Report::new(ServerError)
-                    .attach_printable(format!("Unable to start server! {}", e))
-            })?;
+        let listener = TcpListener::bind(&addr).await.map_err(|e| {
+            Report::new(ServerError).attach_printable(format!("Unable to start server! {}", e))
+        })?;
 
         info!("Server listening on {:?}", listener.local_addr());
 
         while let Ok((stream, addr)) = listener.accept().await {
             debug!("New connection from {}", addr);
 
+            if self.state.is_running.compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            ) == Ok(false)
+            {
+                let me = self.clone();
+                tokio::spawn(async move { me.game_loop().await });
+            }
+
             let me = Arc::clone(self);
             tokio::spawn(async move {
-                if let Err(e) = me.handle_connection(stream, addr)
+                if let Err(e) = me
+                    .handle_connection(stream, addr)
                     .await
-                    .attach_printable_lazy(|| format!("Error in connection {}", addr)) {
-                        info!("{}", e);
-                    }
-                
+                    .attach_printable_lazy(|| format!("Error in connection {}", addr))
+                {
+                    info!("{}", e);
+                }
             });
         }
 
         Ok(())
     }
 
-    async fn handle_connection(self :Arc<Self>, mut stream: TcpStream, addr: SocketAddr) -> Result<(), ConnectionError> {
-        
+    async fn handle_connection(
+        self: &Arc<Self>,
+        mut stream: TcpStream,
+        addr: SocketAddr,
+    ) -> Result<(), ConnectionError> {
         if self.state.players.len() == self.args.max_players_count {
             debug!("Connection limit reached. Disconnecting {}", addr);
             _ = stream.shutdown().await;
-            return Ok(())
+            return Ok(());
         }
 
         let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
         let (mut sink, mut stream) = stream.split();
         let (uuid, mut rx) = self.spawn_payer();
 
-        loop {
-            tokio::select! {
-                _ = rx.recv() => {
-                    // send turn message
-                    todo!();
-                }
-                ws_msg = stream.next() => {
-                    match ws_msg {
-                        Some(msg) => match msg {
-                            Ok(Message::Text(json_str)) => {
-                                let message: ClientMessage = serde_json::from_str(&json_str)
-                                    .report()
-                                    .change_context(ConnectionError)
-                                    .attach_printable_lazy(|| format!("Invalid message body, got {}", json_str))?;
-                            }
-                            _ => {
-                                // invalid message, continue
-                            }
-                        }
-                        None => {
-                            // close connection
-                        }
-                    }
-                }
-                // todo!()
-            }
-            // sleep(Duration::from_secs(3)).await;
-            // info!("{:?}", stream.next().await);
-            // if let Err(e) = sink.send(Message::Text(serde_json::to_string(&ServerMessage::Register { name: "Bartek".into() }).unwrap())).await {
-            //     error!("{}", e);
-            // }
-            // sleep(Duration::from_secs(100)).await;
-        }
+        // sleep(Duration::from_secs(3)).await;
+        // info!("{:?}", stream.next().await);
+        // if let Err(e) = sink.send(Message::Text(serde_json::to_string(&ServerMessage::Register { name: "Bartek".into() }).unwrap())).await {
+        //     error!("{}", e);
+        // }
+        // sleep(Duration::from_secs(100)).await;
+
         Ok(())
     }
 
-    fn spawn_payer(self: Arc<Self>) -> (Uuid, Receiver<()>) {
+    async fn player_loop(
+        self: &Arc<Self>,
+        sink: SplitSink<WebSocketStream<TcpStream>, Message>,
+        mut stream: SplitStream<WebSocketStream<TcpStream>>,
+        uuid: Uuid,
+        mut rx: Receiver<()>,
+    ) -> Result<(), ConnectionError> {
+        loop {
+            tokio::select! {
+                    _ = rx.recv() => {
+                        // send turn message
+                        // todo!();
+                    }
+                    ws_msg = stream.next() => {
+                        match ws_msg {
+                            Some(msg) => match msg {
+                                Ok(Message::Text(json_str)) => {
+                                    let message: ClientMessage = serde_json::from_str(&json_str)
+                                        .report()
+                                        .change_context(ConnectionError)
+                                        .attach_printable_lazy(|| format!("Invalid message body, got {}", json_str))?;
+
+                                    match message {
+                                        ClientMessage::Turn { direction } => {
+                                            if let Some(mut player_state) = self.state.players.get_mut(&uuid) {
+                                                player_state.last_move = Some(direction);
+                                            } else {
+                                                return Err(ConnectionError)
+                                                    .report()
+                                                    .attach("Game logic broken! Player not in players.")
+                                            }
+                                        },
+                                    }
+                                }
+                                _ => {
+                                    return Err(ConnectionError)
+                                        .report()
+                                        .attach("Invalid message")
+                                }
+                            }
+                            None => {
+                                return Ok(())
+                            }
+                        }
+                    }
+            }
+        }
+    }
+
+    fn spawn_payer(self: &Arc<Self>) -> (Uuid, Receiver<()>) {
         let mut rng = rand::thread_rng();
 
         let uuid = Uuid::new_v4();
@@ -260,25 +299,22 @@ impl Server {
         while self.state.map_state.contains_key(&starting_point) {
             starting_point = rng.gen();
         }
-        let new_player = PlayerData::new(
-            starting_point, 
-            colour,
-            direction,
-            tx,
-        );
-        
+        let new_player = PlayerData::new(starting_point, colour, direction, tx);
+
         self.state.players.insert(uuid.clone(), new_player);
-        
+
         (uuid, rx)
     }
 
-    async fn game_loop(self: Arc<Self>) -> Result<(), GameError> {
-
+    async fn game_loop(self: &Arc<Self>) -> Result<(), GameError> {
         while !self.state.players.is_empty() {
             sleep(Duration::from_millis(self.args.game_tick)).await;
         }
 
+        self.state
+            .is_running
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+
         Ok(())
     }
-
 }

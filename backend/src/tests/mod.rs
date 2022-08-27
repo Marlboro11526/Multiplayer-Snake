@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::server::messages::ClientMessage;
+    use crate::server::{messages::ClientMessage, Direction};
 
     #[test]
     fn deserialization() {
-        let msg = ClientMessage::Register { name: "Bartek".into() };
+        let msg = ClientMessage::Turn { direction: Direction::Up };
         let output = serde_json::to_string(&msg).unwrap();
         println!("{}", output);
     }
@@ -12,8 +12,8 @@ mod tests {
     fn serialization() {
         let fake_message = r#"
         {
-            "Register" : {
-                "name" : "Bartek"
+            "Turn" : {
+                "direction" : "Down"
             }
         }
         "#;

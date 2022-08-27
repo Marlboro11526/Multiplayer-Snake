@@ -4,9 +4,6 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
-    Register {
-        name: String,
-    },
     Turn {
         direction: Direction,
     },
