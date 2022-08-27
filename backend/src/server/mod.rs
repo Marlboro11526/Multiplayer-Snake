@@ -11,6 +11,8 @@ use parking_lot::RwLock;
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::ops::Add;
 use std::sync::atomic::AtomicBool;
 use std::{collections::VecDeque, fmt, net::SocketAddr, rc::Rc, sync::Arc, time::Duration};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
@@ -52,7 +54,7 @@ pub struct Args {
 }
 
 #[repr(u8)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum Direction {
     Up = 0,
     Right = 1,
@@ -60,13 +62,29 @@ pub enum Direction {
     Left = 3,
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
-pub struct Point {
-    x: u8,
-    y: u8,
+impl Add<Direction> for Point {
+    type Output = Point;
+
+    fn add(self, direction: Direction) -> Self::Output {
+        let mut x = self.x;
+        let mut y = self.y;
+        match direction {
+            Direction::Up => y -= 1,
+            Direction::Right => x += 1,
+            Direction::Down => y += 1,
+            Direction::Left => x -= 1,
+        }
+        Point { x, y }
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, Eq, Copy, Clone, Serialize, Deserialize)]
+pub struct Point {
+    x: i8,
+    y: i8,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Colour {
     r: u8,
     g: u8,
@@ -121,11 +139,16 @@ impl PlayerData {
             tx,
         }
     }
+
+    fn killed_restart(&mut self, starting_point: Point) {
+        self.snake.killed_restart(starting_point);
+        self.last_move = None;
+    }
 }
 
 struct State {
     players: DashMap<Uuid, PlayerData>,
-    map_state: DashMap<Point, Option<&'static Uuid>>,
+    map_state: DashMap<Point, Uuid>,
     is_running: AtomicBool,
 }
 
@@ -294,8 +317,8 @@ impl Server {
         let uuid = Uuid::new_v4();
         let colour: Colour = rng.gen();
         let direction: Direction = rng.gen();
-        let (tx, rx) = channel::<()>(1);
-        let mut starting_point: Point = rng.gen();
+        let (tx, rx) = channel::<()>(16);
+        let mut starting_point: Point = self.random_free_point();
         while self.state.map_state.contains_key(&starting_point) {
             starting_point = rng.gen();
         }
@@ -309,6 +332,37 @@ impl Server {
     async fn game_loop(self: &Arc<Self>) -> Result<(), GameError> {
         while !self.state.players.is_empty() {
             sleep(Duration::from_millis(self.args.game_tick)).await;
+
+            let mut killed_players = HashSet::<Uuid>::new();
+            let mut new_heads = HashMap::<Uuid, Point>::new();
+
+            for mut player in self.state.players.iter_mut() {
+                player
+                    .last_move
+                    .map(|direction| player.snake.set_direction(direction));
+                let (new_head, last) = player.value_mut().snake.do_move();
+                new_heads.insert(player.key().clone(), new_head);
+                self.state.map_state.remove(&last);
+                self.state.map_state.insert(new_head, player.key().clone());
+            }
+
+            for new_head in new_heads {
+                if self.state.map_state.contains_key(&new_head.1) || !self.is_in_map(&new_head.1) {
+                    killed_players.insert(new_head.0);
+                }
+            }
+
+            for killed_player in killed_players {
+                let starting_point = self.random_free_point();
+                self.state
+                    .players
+                    .get_mut(&killed_player)
+                    .map(|mut player_data| player_data.killed_restart(starting_point));
+            }
+
+            for mut player in self.state.players.iter_mut() {
+                player.tx.send(());
+            }
         }
 
         self.state
@@ -316,5 +370,25 @@ impl Server {
             .store(false, std::sync::atomic::Ordering::SeqCst);
 
         Ok(())
+    }
+
+    fn random_free_point(self: &Arc<Self>) -> Point {
+        let mut rng = rand::thread_rng();
+        let mut point: Point = rng.gen();
+        while self.state.map_state.contains_key(&point) {
+            point = rng.gen();
+        }
+        point
+    }
+    fn is_in_map(self: &Arc<Self>, point: &Point) -> bool {
+        let width = self.args.field_width;
+        let height = self.args.field_height;
+        match point {
+            Point { x: -1, y: _ } => false,
+            Point { x: _, y: -1 } => false,
+            Point { x: width, y: _ } => false,
+            Point { x: _, y: height } => false,
+            _ => true,
+        }
     }
 }
