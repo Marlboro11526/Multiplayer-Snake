@@ -171,6 +171,9 @@ pub struct ConnectionError;
 #[derive(Debug)]
 pub struct GameError;
 
+#[derive(Debug)]
+pub struct SendError;
+
 impl fmt::Display for ServerError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str("Server error")
@@ -187,10 +190,16 @@ impl fmt::Display for GameError {
         fmt.write_str("Game error")
     }
 }
+impl fmt::Display for SendError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.write_str("Send message error")
+    }
+}
 
 impl Context for ServerError {}
 impl Context for ConnectionError {}
 impl Context for GameError {}
+impl Context for SendError {}
 
 impl Server {
     pub fn new(args: Args) -> Self {
@@ -249,15 +258,38 @@ impl Server {
         }
 
         let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
-        let (mut sink, mut stream) = stream.split();
+        let (mut sink, stream) = stream.split();
         let (uuid, mut rx) = self.spawn_payer();
+        Server::send_message(
+            &mut sink,
+            &ServerMessage::Register {
+                field_width: self.args.field_width,
+                field_height: self.args.field_height,
+            },
+        )
+        .await
+        .change_context(ConnectionError)
+        .attach_printable("Unable to send Register message")?;
+        self.player_loop(sink, stream, uuid, rx).await?;
 
-        // sleep(Duration::from_secs(3)).await;
-        // info!("{:?}", stream.next().await);
-        // if let Err(e) = sink.send(Message::Text(serde_json::to_string(&ServerMessage::Register { name: "Bartek".into() }).unwrap())).await {
-        //     error!("{}", e);
-        // }
-        // sleep(Duration::from_secs(100)).await;
+        self.state.players.remove(&uuid);
+        Ok(())
+    }
+
+    async fn send_message(
+        sink: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
+        message: &ServerMessage,
+    ) -> Result<(), SendError> {
+        let encoded_message = serde_json::to_string(message)
+            .report()
+            .change_context(SendError)
+            .attach_printable("Serde error while encoding!")?;
+
+        sink.send(Message::Text(encoded_message))
+            .await
+            .report()
+            .change_context(SendError)
+            .attach_printable("Error while sending message!")?;
 
         Ok(())
     }

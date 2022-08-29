@@ -14,7 +14,6 @@ pub enum ClientMessage {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     Register {
-        name: String,
         field_width: usize,
         field_height: usize,
     },
@@ -23,27 +22,32 @@ pub enum ServerMessage {
     },
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::ClientMessage;
+#[cfg(test)]
+mod tests {
+    use std::collections::VecDeque;
 
-//     #[test]
-//     fn deserialization() {
-//         let msg = ClientMessage::Register { name: "Bartek".into() };
-//         let output = serde_json::to_string(&msg).unwrap();
-//         println!("{}", output);
-//     }
-//     #[test]
-//     fn serialization() {
-//         let fake_message = r#"
-//         {
-//             "Register" : {
-//                 "name" : "Bartek"
-//             }
-//         }
-//         "#;
+    use crate::server::{snake::Snake, Colour, Point};
 
-//         let msg : ClientMessage = serde_json::from_str(fake_message).unwrap();
-//         println!{"{:?}", msg};
-//     }
-// }
+    use super::ServerMessage;
+    #[test]
+    fn serialization() {
+        let msg = ServerMessage::Turn {
+            players: vec![Snake::new(
+                VecDeque::from(vec![
+                    Point { x: 1, y: 2 },
+                    Point { x: 1, y: 3 },
+                    Point { x: 1, y: 5 },
+                ]),
+                Colour {
+                    r: 123,
+                    g: 0,
+                    b: 255,
+                },
+                crate::server::Direction::Down,
+            )],
+        };
+
+        let serialized = serde_json::to_string(&msg);
+        println!("{:?}", serialized);
+    }
+}
