@@ -1,8 +1,5 @@
-use std::collections::HashSet;
-
 use crate::server::Direction;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use super::snake::Snake;
 
@@ -13,13 +10,8 @@ pub enum ClientMessage {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
-    Register {
-        field_width: usize,
-        field_height: usize,
-    },
-    Turn {
-        players: Vec<Snake>,
-    },
+    Register { field_width: i8, field_height: i8 },
+    Turn { players: Vec<Snake> },
 }
 
 #[cfg(test)]

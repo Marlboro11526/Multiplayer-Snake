@@ -3,18 +3,17 @@ pub mod snake;
 
 use clap::Parser;
 use dashmap::DashMap;
-use error_stack::{bail, Context, IntoReport, Report, Result, ResultExt};
+use error_stack::{Context, IntoReport, Report, Result, ResultExt};
 use futures::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use log::{debug, error, info};
-use parking_lot::RwLock;
+use log::{debug, info};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::ops::Add;
 use std::sync::atomic::AtomicBool;
-use std::{collections::VecDeque, fmt, net::SocketAddr, rc::Rc, sync::Arc, time::Duration};
+use std::{collections::VecDeque, fmt, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::{
     io::AsyncWriteExt,
@@ -42,11 +41,11 @@ pub struct Args {
 
     /// Field width in blocks
     #[clap(short = 'w', value_parser, default_value_t = 15)]
-    field_width: usize,
+    field_width: i8,
 
     /// Field height in blocks
     #[clap(short = 'h', value_parser, default_value_t = 10)]
-    field_height: usize,
+    field_height: i8,
 
     /// Game tick in miliseconds
     #[clap(short = 't', value_parser, default_value_t = 500)]
@@ -84,7 +83,7 @@ pub struct Point {
     y: i8,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Colour {
     r: u8,
     g: u8,
@@ -156,7 +155,9 @@ impl State {
     fn new(args: &Args) -> Self {
         State {
             players: DashMap::with_capacity(args.max_players_count),
-            map_state: DashMap::with_capacity(args.field_height * args.field_width),
+            map_state: DashMap::with_capacity(
+                args.field_height as usize * args.field_width as usize,
+            ),
             is_running: AtomicBool::new(false),
         }
     }
@@ -259,7 +260,7 @@ impl Server {
 
         let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
         let (mut sink, stream) = stream.split();
-        let (uuid, mut rx) = self.spawn_payer();
+        let (uuid, rx) = self.spawn_payer();
         Server::send_message(
             &mut sink,
             &ServerMessage::Register {
@@ -296,7 +297,7 @@ impl Server {
 
     async fn player_loop(
         self: &Arc<Self>,
-        sink: SplitSink<WebSocketStream<TcpStream>, Message>,
+        mut sink: SplitSink<WebSocketStream<TcpStream>, Message>,
         mut stream: SplitStream<WebSocketStream<TcpStream>>,
         uuid: Uuid,
         mut rx: Receiver<()>,
@@ -304,8 +305,11 @@ impl Server {
         loop {
             tokio::select! {
                     _ = rx.recv() => {
-                        // send turn message
-                        // todo!();
+                        let players : Vec<Snake> = self.state.players.iter().map(|entry| entry.value().snake.clone()).collect();
+                        let msg = ServerMessage::Turn{players};
+                        Server::send_message(&mut sink, &msg).await
+                            .change_context(ConnectionError)
+                            .attach_printable("Could not send message to clinet")?;
                     }
                     ws_msg = stream.next() => {
                         match ws_msg {
@@ -350,10 +354,7 @@ impl Server {
         let colour: Colour = rng.gen();
         let direction: Direction = rng.gen();
         let (tx, rx) = channel::<()>(16);
-        let mut starting_point: Point = self.random_free_point();
-        while self.state.map_state.contains_key(&starting_point) {
-            starting_point = rng.gen();
-        }
+        let starting_point: Point = self.random_free_point();
         let new_player = PlayerData::new(starting_point, colour, direction, tx);
 
         self.state.players.insert(uuid.clone(), new_player);
@@ -375,12 +376,17 @@ impl Server {
                 let (new_head, last) = player.value_mut().snake.do_move();
                 new_heads.insert(player.key().clone(), new_head);
                 self.state.map_state.remove(&last);
-                self.state.map_state.insert(new_head, player.key().clone());
             }
 
-            for new_head in new_heads {
+            for new_head in new_heads.iter() {
                 if self.state.map_state.contains_key(&new_head.1) || !self.is_in_map(&new_head.1) {
-                    killed_players.insert(new_head.0);
+                    killed_players.insert(*new_head.0);
+                }
+            }
+
+            for new_head in new_heads.iter() {
+                if !killed_players.contains(&new_head.0) {
+                    self.state.map_state.insert(*new_head.1, *new_head.0);
                 }
             }
 
@@ -390,10 +396,11 @@ impl Server {
                     .players
                     .get_mut(&killed_player)
                     .map(|mut player_data| player_data.killed_restart(starting_point));
+                self.state.map_state.insert(starting_point, killed_player);
             }
 
-            for mut player in self.state.players.iter_mut() {
-                player.tx.send(());
+            for player in self.state.players.iter_mut() {
+                _ = player.tx.send(()).await;
             }
         }
 
@@ -407,19 +414,19 @@ impl Server {
     fn random_free_point(self: &Arc<Self>) -> Point {
         let mut rng = rand::thread_rng();
         let mut point: Point = rng.gen();
-        while self.state.map_state.contains_key(&point) {
+        while self.state.map_state.contains_key(&point) || !self.is_in_map(&point) {
             point = rng.gen();
         }
         point
     }
+
     fn is_in_map(self: &Arc<Self>, point: &Point) -> bool {
-        let width = self.args.field_width;
-        let height = self.args.field_height;
+        let field_width = self.args.field_width;
+        let field_height = self.args.field_height;
         match point {
-            Point { x: -1, y: _ } => false,
-            Point { x: _, y: -1 } => false,
-            Point { x: width, y: _ } => false,
-            Point { x: _, y: height } => false,
+            Point { x, y } if *x < 0 || *y < 0 => false,
+            Point { x, y: _ } if *x >= field_width => false,
+            Point { x: _, y } if *y >= field_height => false,
             _ => true,
         }
     }

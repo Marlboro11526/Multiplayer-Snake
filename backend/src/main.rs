@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use backend::server::{Server, Args};
+use backend::server::{Args, Server};
 use clap::Parser;
-use log;
 
 #[tokio::main]
 async fn main() {
