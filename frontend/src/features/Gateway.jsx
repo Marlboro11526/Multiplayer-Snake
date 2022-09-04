@@ -4,11 +4,16 @@ import {
 	setArenaWidth,
 	setPlayers,
 } from "../redux_logic/slices/gameStateSlice";
-export class Gateway {
+
+import store from "../redux_logic/store";
+
+class Gateway {
 	constructor() {
 		if (Gateway.exists) {
 			return Gateway.instance;
 		}
+
+		console.debug("Gateway constructor");
 
 		Gateway.exists = true;
 		Gateway.instance = this;
@@ -17,6 +22,10 @@ export class Gateway {
 		this.connected = false;
 		this.auto_restart = true;
 		this.callbacks = [registerCallback, turnCallback];
+	}
+
+	destructor() {
+		console.debug("Gateway destructor");
 	}
 
 	start() {
@@ -87,25 +96,26 @@ export class Gateway {
 }
 
 const registerCallback = (message) => {
-	console.debug("Register" in message);
+	console.debug("Register", "Register" in message);
 	if (!("Register" in message)) {
 		return;
 	}
 	console.debug(message["Register"]);
 	const width = message["Register"]["field_width"];
 	const height = message["Register"]["field_height"];
-	setArenaWidth({ payload: width });
-	setArenaHeight({ payload: height });
+	console.debug(width, height);
+	store.dispatch(setArenaWidth(width));
+	store.dispatch(setArenaHeight(height));
 };
 
 const turnCallback = (message) => {
-	console.debug("Turn" in message);
+	console.debug("Turn", "Turn" in message);
 	if (!("Turn" in message)) {
 		return;
 	}
 	console.debug(message["Turn"]);
 	const players = message["Turn"]["Players"];
-	setPlayers({ payload: players });
+	store.dispatch(setPlayers(players));
 };
 
 export default Gateway;

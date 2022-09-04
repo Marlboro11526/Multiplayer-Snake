@@ -6,14 +6,13 @@ import { useNavigate } from "react-router-dom";
 import { playerNameSelector } from "../redux_logic/selectors";
 import Gateway from "./Gateway";
 
-const gateway = new Gateway();
-
 export function Landing() {
 	const player_name = useSelector(playerNameSelector);
 	const [name, setName] = useState("");
 	const navigate = useNavigate();
 
 	useEffect(() => {
+		const gateway = new Gateway();
 		gateway.start();
 
 		if (player_name != null) {
@@ -25,7 +24,7 @@ export function Landing() {
 		let code = e.which || e.keyCode;
 		if (code === 13) {
 			console.debug("sending");
-			let gateway = new Gateway();
+			const gateway = new Gateway();
 			gateway.send({
 				Register: {
 					name: name,

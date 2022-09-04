@@ -213,7 +213,7 @@ impl Server {
     pub async fn run(self: &Arc<Self>) -> Result<(), ServerError> {
         let addr = format!("127.0.0.1:{}", self.args.port).to_string();
         let listener = TcpListener::bind(&addr).await.map_err(|e| {
-            Report::new(ServerError).attach_printable(format!("Unable to start server! {}", e))
+            Report::new(ServerError).attach_printable(format!("Unable to start server! {:?}", e))
         })?;
 
         info!("Server listening on {:?}", listener.local_addr());
@@ -221,25 +221,14 @@ impl Server {
         while let Ok((stream, addr)) = listener.accept().await {
             debug!("New connection from {}", addr);
 
-            if self.state.is_running.compare_exchange(
-                false,
-                true,
-                std::sync::atomic::Ordering::SeqCst,
-                std::sync::atomic::Ordering::SeqCst,
-            ) == Ok(false)
-            {
-                let me = self.clone();
-                tokio::spawn(async move { me.game_loop().await });
-            }
-
             let me = Arc::clone(self);
             tokio::spawn(async move {
                 if let Err(e) = me
                     .handle_connection(stream, addr)
                     .await
-                    .attach_printable_lazy(|| format!("Error in connection {}", addr))
+                    .attach_printable_lazy(|| format!("Connection lost from {}", addr))
                 {
-                    debug!("Connection lost from {} due to {}", addr, e);
+                    debug!("{e:?}");
                 }
             });
         }
@@ -272,7 +261,7 @@ impl Server {
         .change_context(ConnectionError)
         .attach_printable("Unable to send Register message")?;
         self.player_loop(sink, stream, uuid, rx).await?;
-
+        // TODO
         self.state.players.remove(&uuid);
         Ok(())
     }
@@ -330,6 +319,20 @@ impl Server {
                                                     .attach("Game logic broken! Player not in players.")
                                             }
                                         },
+                                        ClientMessage::Register { name } => {
+                                            debug!("New player name: {}", name);
+
+                                            if self.state.is_running.compare_exchange(
+                                                false,
+                                                true,
+                                                std::sync::atomic::Ordering::SeqCst,
+                                                std::sync::atomic::Ordering::SeqCst,
+                                            ) == Ok(false)
+                                            {
+                                                let me = self.clone();
+                                                tokio::spawn(async move { me.game_loop().await });
+                                            }
+                                        }
                                     }
                                 }
                                 _ => {

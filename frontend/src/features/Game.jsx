@@ -3,19 +3,18 @@ import { useEffect } from "react";
 
 import { Arena } from "./Arena";
 import { Landing } from "./Landing";
-import { Gateway } from "./Gateway";
 
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { playerNameSelector } from "../redux_logic/selectors";
-
-const gateway = new Gateway();
+import Gateway from "./Gateway";
 
 function Game() {
 	const player_name = useSelector(playerNameSelector);
 	const navigate = useNavigate();
 
 	useEffect(() => {
+		const gateway = new Gateway();
 		gateway.start();
 
 		if (player_name != null) {

@@ -1,4 +1,3 @@
-
 export const playerNameSelector = (state) => {
-    return state.userState.name;
+	return state.userState.name;
 };
