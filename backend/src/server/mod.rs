@@ -239,7 +239,7 @@ impl Server {
                     .await
                     .attach_printable_lazy(|| format!("Error in connection {}", addr))
                 {
-                    info!("{}", e);
+                    debug!("Connection lost from {} due to {}", addr, e);
                 }
             });
         }
