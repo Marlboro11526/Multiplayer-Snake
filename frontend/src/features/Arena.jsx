@@ -2,17 +2,45 @@ import React from "react";
 import { useSelector } from "react-redux";
 
 import "../css/Arena.css";
+import Gateway from "./Gateway";
 
 export function Arena() {
 	const arena_width = useSelector((state) => state.gameState.arena_width);
 	const arena_height = useSelector((state) => state.gameState.arena_height);
 	const players = useSelector((state) => state.gameState.players);
 
-	console.debug("ARENA WIDTH : ", arena_width);
-	console.debug(players);
+	const gateway = new Gateway();
+	// console.debug("ARENA WIDTH : ", arena_width);
+	// console.debug(players);
+
+	const handleKeyDown = (e) => {
+		let key = e.key;
+		console.debug("You pressed a key: " + key);
+		let direction = null;
+		switch (key) {
+			case "ArrowDown":
+				direction = "Down";
+				break;
+			case "ArrowUp":
+				direction = "Up";
+				break;
+			case "ArrowLeft":
+				direction = "Left";
+				break;
+			case "ArrowRight":
+				direction = "Right";
+				break;
+		}
+
+		gateway.send({
+			Turn: {
+				direction: direction,
+			},
+		});
+	};
 
 	const renderTile = (tile, col_num, row_num) => {
-		console.debug(tile);
+		// console.debug(tile);
 		return (
 			<div
 				className="tile"
@@ -49,11 +77,11 @@ export function Arena() {
 				tiles[i][j] = null;
 			}
 		}
-		console.log("Rendering tiles");
+		// console.log("Rendering tiles");
 		for (let player of players) {
-			console.debug("Player ", player);
+			// console.debug("Player ", player);
 			for (let part of player["parts"]) {
-				console.debug(`Set colour of ${(part.x, " ", part.y)}`);
+				// console.debug(`Set colour of ${(part.x, " ", part.y)}`);
 				tiles[part.x][part.y] = player["colour"];
 			}
 		}
@@ -63,5 +91,9 @@ export function Arena() {
 
 	// console.debug(arena_height);
 
-	return <div id="arena">{arena_height && renderTiles()};</div>;
+	return (
+		<div id="arena" onKeyDown={(e) => handleKeyDown(e)} tabIndex="0">
+			{arena_height && renderTiles()};
+		</div>
+	);
 }

@@ -1,3 +1,4 @@
+use log::debug;
 use serde::{Deserialize, Serialize};
 
 use super::{Colour, Direction, Point};
@@ -33,6 +34,7 @@ impl Snake {
     }
 
     pub fn set_direction(&mut self, direction: Direction) {
+        debug!("Really setting direction to {:#?}", direction);
         self.direction = direction;
     }
 }

@@ -32,6 +32,7 @@ export const gameSlice = createSlice({
 	},
 });
 
-export const { setPlayers, setArenaWidth, setArenaHeight } = gameSlice.actions;
+export const { setPlayers, setArenaWidth, setArenaHeight, setDirection } =
+	gameSlice.actions;
 
 export default gameSlice.reducer;

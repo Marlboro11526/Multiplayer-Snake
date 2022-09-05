@@ -124,6 +124,7 @@ pub struct Server {
     state: Arc<State>,
 }
 
+#[derive(Debug)]
 struct PlayerData {
     snake: Snake,
     last_move: Option<Direction>,
@@ -304,10 +305,13 @@ impl Server {
                                         .change_context(ConnectionError)
                                         .attach_printable_lazy(|| format!("Invalid message body, got {}", json_str))?;
 
+                                    debug!("Message: {:#?}", message);
+
                                     match message {
                                         ClientMessage::Turn { direction } => {
                                             if let Some(mut player_state) = self.state.players.get_mut(&uuid) {
                                                 player_state.last_move = Some(direction);
+                                                debug!("Setting direction to {:#?}", direction);
                                             } else {
                                                 return Err(ConnectionError)
                                                     .report()
@@ -420,6 +424,8 @@ impl Server {
             for player in self.state.players.iter_mut() {
                 _ = player.tx.send(()).await;
             }
+
+            debug!("{:#?}", self.state.players);
         }
 
         self.state

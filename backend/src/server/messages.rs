@@ -19,9 +19,9 @@ pub enum ServerMessage {
 mod tests {
     use std::collections::VecDeque;
 
-    use crate::server::{snake::Snake, Colour, Point};
+    use crate::server::{snake::Snake, Colour, Direction, Point};
 
-    use super::ServerMessage;
+    use super::*;
     #[test]
     fn serialization() {
         let msg = ServerMessage::Turn {
@@ -38,6 +38,13 @@ mod tests {
                 },
                 crate::server::Direction::Down,
             )],
+        };
+
+        let serialized = serde_json::to_string(&msg);
+        println!("{:?}", serialized);
+
+        let msg = ClientMessage::Turn {
+            direction: Direction::Up,
         };
 
         let serialized = serde_json::to_string(&msg);
