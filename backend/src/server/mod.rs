@@ -260,8 +260,7 @@ impl Server {
         .await
         .change_context(ConnectionError)
         .attach_printable("Unable to send Register message")?;
-        self.player_loop(sink, stream, uuid, rx).await?;
-        // TODO
+        _ = self.player_loop(sink, stream, uuid, rx).await;
         self.state.players.remove(&uuid);
         Ok(())
     }
@@ -294,11 +293,7 @@ impl Server {
         loop {
             tokio::select! {
                     _ = rx.recv() => {
-                        let players : Vec<Snake> = self.state.players.iter().map(|entry| entry.value().snake.clone()).collect();
-                        let msg = ServerMessage::Turn{players};
-                        Server::send_message(&mut sink, &msg).await
-                            .change_context(ConnectionError)
-                            .attach_printable("Could not send message to clinet")?;
+                        self.send_turn_message(&mut sink).await?
                     }
                     ws_msg = stream.next() => {
                         match ws_msg {
@@ -348,6 +343,25 @@ impl Server {
                     }
             }
         }
+    }
+
+    async fn send_turn_message(
+        self: &Arc<Self>,
+        sink: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
+    ) -> Result<(), ConnectionError> {
+        let players: Vec<Snake> = self
+            .state
+            .players
+            .iter()
+            .map(|entry| entry.value().snake.clone())
+            .collect();
+        let msg = ServerMessage::Turn { players };
+        Server::send_message(sink, &msg)
+            .await
+            .change_context(ConnectionError)
+            .attach_printable("Could not send message to clinet")?;
+
+        Ok(())
     }
 
     fn spawn_payer(self: &Arc<Self>) -> (Uuid, Receiver<()>) {
