@@ -1,19 +1,19 @@
 #arena {
 	display: flex;
 	flex-direction: column;
-    background-color: #000;
-    justify-content: space-between;
+	background-color: #000;
+	justify-content: space-between;
 }
 
 .arena-row {
 	display: flex;
 	flex-direction: row;
-    justify-content: space-between;
+	justify-content: space-between;
 }
 
 .tile {
 	height: 50px;
 	width: 50px;
-	background-color: rgb(33, 32, 32);
-    margin: 5px;
+	/* background-color: rgb(33, 32, 32); */
+	margin: 5px;
 }

@@ -3,20 +3,21 @@ import { createSlice } from "@reduxjs/toolkit";
 export const gameSlice = createSlice({
 	name: "game_state",
 	initialState: {
-		payers: {},
+		players: [],
 		arena_width: null,
 		arena_height: null,
 	},
 	reducers: {
 		setPlayers: (state, action) => {
+			// console.debug("Set players", action);
 			return {
 				...state,
 				players: action.payload,
 			};
 		},
 		setArenaWidth: (state, action) => {
-			console.debug(action);
-			console.debug("action payload: ", action.payload);
+			// console.debug(action);
+			// console.debug("action payload: ", action.payload);
 			return {
 				...state,
 				arena_width: action.payload,

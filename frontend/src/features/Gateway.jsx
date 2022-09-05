@@ -55,8 +55,8 @@ class Gateway {
 	}
 
 	on_message(message) {
-		console.debug(JSON.parse(message.data));
-		console.debug(message.data);
+		// console.debug(JSON.parse(message.data));
+		// console.debug(message.data);
 		for (const cb of this.callbacks) {
 			cb(JSON.parse(message.data));
 		}
@@ -100,10 +100,10 @@ const registerCallback = (message) => {
 	if (!("Register" in message)) {
 		return;
 	}
-	console.debug(message["Register"]);
+	// console.debug(message["Register"]);
 	const width = message["Register"]["field_width"];
 	const height = message["Register"]["field_height"];
-	console.debug(width, height);
+	// console.debug(width, height);
 	store.dispatch(setArenaWidth(width));
 	store.dispatch(setArenaHeight(height));
 };
@@ -114,7 +114,8 @@ const turnCallback = (message) => {
 		return;
 	}
 	console.debug(message["Turn"]);
-	const players = message["Turn"]["Players"];
+	const players = message["Turn"]["players"];
+	// console.debug("Message players:", players);
 	store.dispatch(setPlayers(players));
 };
 

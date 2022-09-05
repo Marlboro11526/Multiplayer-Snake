@@ -9,17 +9,20 @@ export function Arena() {
 	const players = useSelector((state) => state.gameState.players);
 
 	console.debug("ARENA WIDTH : ", arena_width);
+	console.debug(players);
 
 	const renderTile = (tile, col_num, row_num) => {
+		console.debug(tile);
 		return (
 			<div
 				className="tile"
 				key={arena_width * row_num + col_num}
 				style={{
-					colour: tile && tile.colour,
+					backgroundColor:
+						tile && `rgb(${tile["r"]},${tile["g"]},${tile["b"]})`,
 				}}
 			>
-				{tile}, ({col_num}, {row_num})
+				({col_num}, {row_num})
 			</div>
 		);
 	};
@@ -45,17 +48,19 @@ export function Arena() {
 				tiles[i][j] = null;
 			}
 		}
-
-		for (let player in players) {
-			for (let part in player.parts) {
-				tiles[part.x][part.y] = player.colour;
+		console.log("Rendering tiles");
+		for (let player of players) {
+			console.debug("Player ", player);
+			for (let part of player["parts"]) {
+				console.debug(`Set colour of ${(part.x, " ", part.y)}`);
+				tiles[part.x][part.y] = player["colour"];
 			}
 		}
 
 		return tiles.map(renderRow);
 	};
 
-	console.debug(arena_height);
+	// console.debug(arena_height);
 
 	return <div id="arena">{arena_height && renderTiles()};</div>;
 }
