@@ -18,8 +18,9 @@ export function Arena() {
 				className="tile"
 				key={arena_width * row_num + col_num}
 				style={{
-					backgroundColor:
-						tile && `rgb(${tile["r"]},${tile["g"]},${tile["b"]})`,
+					backgroundColor: tile
+						? `rgb(${tile["r"]},${tile["g"]},${tile["b"]})`
+						: "rgb(33, 32, 32)",
 				}}
 			>
 				({col_num}, {row_num})
@@ -41,10 +42,10 @@ export function Arena() {
 	};
 
 	const renderTiles = () => {
-		let tiles = new Array(arena_height);
-		for (let i = 0; i < arena_height; i++) {
-			tiles[i] = new Array(arena_width);
-			for (let j = 0; j < arena_width; j++) {
+		let tiles = new Array(arena_width);
+		for (let i = 0; i < arena_width; i++) {
+			tiles[i] = new Array(arena_height);
+			for (let j = 0; j < arena_height; j++) {
 				tiles[i][j] = null;
 			}
 		}

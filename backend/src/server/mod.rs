@@ -139,8 +139,8 @@ impl PlayerData {
         }
     }
 
-    fn killed_restart(&mut self, starting_point: Point) {
-        self.snake.killed_restart(starting_point);
+    fn killed_restart(&mut self, starting_point: Point, direction: Direction) {
+        self.snake.killed_restart(starting_point, direction);
         self.last_move = None;
     }
 }
@@ -409,10 +409,11 @@ impl Server {
 
             for killed_player in killed_players {
                 let starting_point = self.random_free_point();
+                let direction = self.random_direction();
                 self.state
                     .players
                     .get_mut(&killed_player)
-                    .map(|mut player_data| player_data.killed_restart(starting_point));
+                    .map(|mut player_data| player_data.killed_restart(starting_point, direction));
                 self.state.map_state.insert(starting_point, killed_player);
             }
 
@@ -435,6 +436,11 @@ impl Server {
             point = rng.gen();
         }
         point
+    }
+
+    fn random_direction(self: &Arc<Self>) -> Direction {
+        let mut rng = rand::thread_rng();
+        rng.gen()
     }
 
     fn is_in_map(self: &Arc<Self>, point: &Point) -> bool {

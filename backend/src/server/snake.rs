@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{Colour, Direction, Point};
-use std::{collections::VecDeque};
+use std::collections::VecDeque;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Snake {
@@ -26,9 +26,10 @@ impl Snake {
         (new_head, last)
     }
 
-    pub fn killed_restart(&mut self, point: Point) {
+    pub fn killed_restart(&mut self, point: Point, direction: Direction) {
         self.parts.clear();
         self.parts.push_front(point);
+        self.direction = direction;
     }
 
     pub fn set_direction(&mut self, direction: Direction) {
