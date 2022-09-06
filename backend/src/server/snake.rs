@@ -21,7 +21,7 @@ impl Snake {
 
     pub fn do_move(&mut self) -> (Point, Point) {
         let new_head = *self.parts.front().unwrap() + self.direction;
-        let last = self.parts.back().unwrap().clone();
+        let last = *self.parts.back().unwrap();
         self.parts.push_front(new_head);
         (new_head, last)
     }

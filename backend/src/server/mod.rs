@@ -1,20 +1,19 @@
+pub mod errors;
 pub mod messages;
 pub mod snake;
+pub mod types;
 
 use clap::Parser;
 use dashmap::{DashMap, DashSet};
-use error_stack::{Context, IntoReport, Report, Result, ResultExt};
+use error_stack::{IntoReport, Report, Result, ResultExt};
 use futures::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, info};
-use rand::distributions::{Distribution, Standard};
 use rand::Rng;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::ops::Add;
 use std::sync::atomic::AtomicBool;
-use std::{collections::VecDeque, fmt, net::SocketAddr, sync::Arc, time::Duration};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
+use tokio::sync::mpsc::{channel, Receiver};
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
@@ -23,7 +22,9 @@ use tokio::{
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 use uuid::Uuid;
 
+use self::types::{Colour, Direction, Point, State, PlayerData};
 use self::{
+    errors::*,
     messages::{ClientMessage, ServerMessage},
     snake::Snake,
 };
@@ -58,107 +59,9 @@ pub struct Args {
     food_count: usize,
 }
 
-#[repr(u8)]
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub enum Direction {
-    Up = 0,
-    Right = 1,
-    Down = 2,
-    Left = 3,
-}
-
-impl Add<Direction> for Point {
-    type Output = Point;
-
-    fn add(self, direction: Direction) -> Self::Output {
-        let mut x = self.x;
-        let mut y = self.y;
-        match direction {
-            Direction::Up => y -= 1,
-            Direction::Right => x += 1,
-            Direction::Down => y += 1,
-            Direction::Left => x -= 1,
-        }
-        Point { x, y }
-    }
-}
-
-#[derive(Debug, Hash, PartialEq, Eq, Copy, Clone, Serialize, Deserialize)]
-pub struct Point {
-    x: i8,
-    y: i8,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Colour {
-    r: u8,
-    g: u8,
-    b: u8,
-}
-
-impl Distribution<Direction> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Direction {
-        let rand_direction = rng.gen_range(0..3);
-        match rand_direction {
-            0 => Direction::Up,
-            1 => Direction::Right,
-            2 => Direction::Down,
-            _ => Direction::Left,
-        }
-    }
-}
-
-impl Distribution<Point> for Standard {
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Point {
-        let (rand_x, rand_y) = rng.gen();
-        Point {
-            x: rand_x,
-            y: rand_y,
-        }
-    }
-}
-
-impl Distribution<Colour> for Standard {
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Colour {
-        let (r, g, b) = rng.gen();
-        Colour { r, g, b }
-    }
-}
-
 pub struct Server {
     args: Args,
     state: Arc<State>,
-}
-
-#[derive(Debug)]
-struct PlayerData {
-    snake: Snake,
-    last_move: Option<Direction>,
-    tx: Sender<()>,
-    score: usize,
-}
-
-impl PlayerData {
-    fn new(starting_point: Point, colour: Colour, direction: Direction, tx: Sender<()>) -> Self {
-        PlayerData {
-            snake: Snake::new(VecDeque::from([starting_point]), colour, direction),
-            last_move: None,
-            tx,
-            score: 1,
-        }
-    }
-
-    fn killed_restart(&mut self, starting_point: Point, direction: Direction) {
-        self.snake.killed_restart(starting_point, direction);
-        self.last_move = None;
-    }
-}
-
-struct State {
-    players: DashMap<Uuid, PlayerData>,
-    map_state: DashMap<Point, Uuid>,
-    is_running: AtomicBool,
-    food: DashSet<Point>,
 }
 
 impl State {
@@ -173,45 +76,6 @@ impl State {
         }
     }
 }
-
-#[derive(Debug)]
-pub struct ServerError;
-
-#[derive(Debug)]
-pub struct ConnectionError;
-
-#[derive(Debug)]
-pub struct GameError;
-
-#[derive(Debug)]
-pub struct SendError;
-
-impl fmt::Display for ServerError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.write_str("Server error")
-    }
-}
-
-impl fmt::Display for ConnectionError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.write_str("Connection error")
-    }
-}
-impl fmt::Display for GameError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.write_str("Game error")
-    }
-}
-impl fmt::Display for SendError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.write_str("Send message error")
-    }
-}
-
-impl Context for ServerError {}
-impl Context for ConnectionError {}
-impl Context for GameError {}
-impl Context for SendError {}
 
 impl Server {
     pub fn new(args: Args) -> Self {
@@ -373,12 +237,7 @@ impl Server {
             .iter()
             .map(|entry| entry.value().snake.clone())
             .collect();
-        let food = self
-            .state
-            .food
-            .iter()
-            .map(|entry| entry.key().clone())
-            .collect();
+        let food = self.state.food.iter().map(|entry| *entry.key()).collect();
         let msg = ServerMessage::Turn { players, food };
         Server::send_message(sink, &msg)
             .await
@@ -398,7 +257,7 @@ impl Server {
         let starting_point: Point = self.random_free_point();
         let new_player = PlayerData::new(starting_point, colour, direction, tx);
 
-        self.state.players.insert(uuid.clone(), new_player);
+        self.state.players.insert(uuid, new_player);
 
         (uuid, rx)
     }
@@ -411,15 +270,12 @@ impl Server {
             let mut new_heads = HashMap::<Point, Vec<Uuid>>::new();
 
             for mut player in self.state.players.iter_mut() {
-                player
-                    .last_move
-                    .map(|direction| player.snake.set_direction(direction));
+                if let Some(direction) = player.last_move {
+                    player.snake.set_direction(direction)
+                }
                 let (new_head, last) = player.value_mut().snake.do_move();
-                new_heads
-                    .entry(new_head)
-                    .or_default()
-                    .push(player.key().clone());
-                if let Some(_) = self.state.food.remove(&new_head) {
+                new_heads.entry(new_head).or_default().push(*player.key());
+                if self.state.food.remove(&new_head).is_some() {
                     player.value_mut().score += 1;
                 } else {
                     self.state.map_state.remove(&last);
@@ -428,8 +284,8 @@ impl Server {
             }
 
             for new_head in new_heads.iter() {
-                if self.state.map_state.contains_key(&new_head.0)
-                    || !self.is_in_map(&new_head.0)
+                if self.state.map_state.contains_key(new_head.0)
+                    || !self.is_in_map(new_head.0)
                     || new_head.1.len() > 1
                 {
                     killed_players.extend(new_head.1.clone());
@@ -443,10 +299,9 @@ impl Server {
             for killed_player in killed_players {
                 let starting_point = self.random_free_point();
                 let direction = self.random_direction();
-                self.state
-                    .players
-                    .get_mut(&killed_player)
-                    .map(|mut player_data| player_data.killed_restart(starting_point, direction));
+                if let Some(mut player_data) = self.state.players.get_mut(&killed_player) {
+                    player_data.killed_restart(starting_point, direction)
+                }
                 self.state.map_state.insert(starting_point, killed_player);
             }
 
