@@ -2,7 +2,7 @@ pub mod messages;
 pub mod snake;
 
 use clap::Parser;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use error_stack::{Context, IntoReport, Report, Result, ResultExt};
 use futures::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
@@ -29,7 +29,9 @@ use self::{
 };
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[clap(name = "Multiplayer Snake Game")]
+#[clap(author = "Bartek Sadlej <sadlejbartek@gmail.com>")]
+#[clap(version, about, long_about = None)]
 pub struct Args {
     /// Port to use
     #[clap(short = 'p', value_parser, default_value_t = 43210)]
@@ -50,6 +52,10 @@ pub struct Args {
     /// Game tick in miliseconds
     #[clap(short = 't', value_parser, default_value_t = 500)]
     game_tick: u64,
+
+    /// Food count on map
+    #[clap(short = 'f', value_parser, default_value_t = 5)]
+    food_count: usize,
 }
 
 #[repr(u8)]
@@ -129,6 +135,7 @@ struct PlayerData {
     snake: Snake,
     last_move: Option<Direction>,
     tx: Sender<()>,
+    score: usize,
 }
 
 impl PlayerData {
@@ -137,6 +144,7 @@ impl PlayerData {
             snake: Snake::new(VecDeque::from([starting_point]), colour, direction),
             last_move: None,
             tx,
+            score: 1,
         }
     }
 
@@ -150,6 +158,7 @@ struct State {
     players: DashMap<Uuid, PlayerData>,
     map_state: DashMap<Point, Uuid>,
     is_running: AtomicBool,
+    food: DashSet<Point>,
 }
 
 impl State {
@@ -160,6 +169,7 @@ impl State {
                 args.field_height as usize * args.field_width as usize,
             ),
             is_running: AtomicBool::new(false),
+            food: DashSet::new(),
         }
     }
 }
@@ -219,6 +229,8 @@ impl Server {
 
         info!("Server listening on {:?}", listener.local_addr());
 
+        self.refill_food();
+
         while let Ok((stream, addr)) = listener.accept().await {
             debug!("New connection from {}", addr);
 
@@ -261,8 +273,13 @@ impl Server {
         .await
         .change_context(ConnectionError)
         .attach_printable("Unable to send Register message")?;
+
         _ = self.player_loop(sink, stream, uuid, rx).await;
-        self.state.players.remove(&uuid);
+        if let Some(entry) = self.state.players.remove(&uuid) {
+            for p in &entry.1.snake.parts {
+                self.state.map_state.remove(p);
+            }
+        }
         Ok(())
     }
 
@@ -296,53 +313,50 @@ impl Server {
                     _ = rx.recv() => {
                         self.send_turn_message(&mut sink).await?
                     }
-                    ws_msg = stream.next() => {
-                        match ws_msg {
-                            Some(msg) => match msg {
-                                Ok(Message::Text(json_str)) => {
-                                    let message: ClientMessage = serde_json::from_str(&json_str)
-                                        .report()
-                                        .change_context(ConnectionError)
-                                        .attach_printable_lazy(|| format!("Invalid message body, got {}", json_str))?;
+                    ws_msg = stream.next() => match ws_msg {
+                        Some(msg) => match msg {
+                            Ok(Message::Text(json_str)) => {
+                                let message: ClientMessage = serde_json::from_str(&json_str)
+                                    .report()
+                                    .change_context(ConnectionError)
+                                    .attach_printable_lazy(|| format!("Invalid message body, got {}", json_str))?;
 
-                                    debug!("Message: {:#?}", message);
+                                match message {
+                                    ClientMessage::Turn { direction } => {
+                                        if let Some(mut player_state) = self.state.players.get_mut(&uuid) {
+                                            player_state.last_move = Some(direction);
+                                        } else {
+                                            return Err(ConnectionError)
+                                                .report()
+                                                .attach("Game logic broken! Player not in players.")
+                                        }
+                                    },
+                                    ClientMessage::Register { name } => {
+                                        debug!("New player name: {}", name);
 
-                                    match message {
-                                        ClientMessage::Turn { direction } => {
-                                            if let Some(mut player_state) = self.state.players.get_mut(&uuid) {
-                                                player_state.last_move = Some(direction);
-                                                debug!("Setting direction to {:#?}", direction);
-                                            } else {
-                                                return Err(ConnectionError)
-                                                    .report()
-                                                    .attach("Game logic broken! Player not in players.")
-                                            }
-                                        },
-                                        ClientMessage::Register { name } => {
-                                            debug!("New player name: {}", name);
-
-                                            if self.state.is_running.compare_exchange(
-                                                false,
-                                                true,
-                                                std::sync::atomic::Ordering::SeqCst,
-                                                std::sync::atomic::Ordering::SeqCst,
-                                            ) == Ok(false)
-                                            {
-                                                let me = self.clone();
-                                                tokio::spawn(async move { me.game_loop().await });
-                                            }
+                                        if self.state.is_running.compare_exchange(
+                                            false,
+                                            true,
+                                            std::sync::atomic::Ordering::SeqCst,
+                                            std::sync::atomic::Ordering::SeqCst,
+                                        ) == Ok(false)
+                                        {
+                                            debug!("RUNNING PLAYERS!");
+                                            let me = self.clone();
+                                            tokio::spawn(async move { me.game_loop().await });
                                         }
                                     }
                                 }
-                                _ => {
-                                    return Err(ConnectionError)
-                                        .report()
-                                        .attach("Invalid message")
-                                }
                             }
-                            None => {
-                                return Ok(())
+                            _ => {
+                                return Err(ConnectionError)
+                                    .report()
+                                    .attach("Invalid message")
                             }
+                        }
+                        None => {
+                            debug!("Connection ended");
+                            return Ok(())
                         }
                     }
             }
@@ -359,7 +373,13 @@ impl Server {
             .iter()
             .map(|entry| entry.value().snake.clone())
             .collect();
-        let msg = ServerMessage::Turn { players };
+        let food = self
+            .state
+            .food
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect();
+        let msg = ServerMessage::Turn { players, food };
         Server::send_message(sink, &msg)
             .await
             .change_context(ConnectionError)
@@ -388,26 +408,35 @@ impl Server {
             sleep(Duration::from_millis(self.args.game_tick)).await;
 
             let mut killed_players = HashSet::<Uuid>::new();
-            let mut new_heads = HashMap::<Uuid, Point>::new();
+            let mut new_heads = HashMap::<Point, Vec<Uuid>>::new();
 
             for mut player in self.state.players.iter_mut() {
                 player
                     .last_move
                     .map(|direction| player.snake.set_direction(direction));
                 let (new_head, last) = player.value_mut().snake.do_move();
-                new_heads.insert(player.key().clone(), new_head);
-                self.state.map_state.remove(&last);
-            }
-
-            for new_head in new_heads.iter() {
-                if self.state.map_state.contains_key(&new_head.1) || !self.is_in_map(&new_head.1) {
-                    killed_players.insert(*new_head.0);
+                new_heads
+                    .entry(new_head)
+                    .or_default()
+                    .push(player.key().clone());
+                if let Some(_) = self.state.food.remove(&new_head) {
+                    player.value_mut().score += 1;
+                } else {
+                    self.state.map_state.remove(&last);
+                    player.value_mut().snake.pop_last();
                 }
             }
 
             for new_head in new_heads.iter() {
-                if !killed_players.contains(&new_head.0) {
-                    self.state.map_state.insert(*new_head.1, *new_head.0);
+                if self.state.map_state.contains_key(&new_head.0)
+                    || !self.is_in_map(&new_head.0)
+                    || new_head.1.len() > 1
+                {
+                    killed_players.extend(new_head.1.clone());
+                } else {
+                    for player_uuid in new_head.1 {
+                        self.state.map_state.insert(*new_head.0, *player_uuid);
+                    }
                 }
             }
 
@@ -421,13 +450,13 @@ impl Server {
                 self.state.map_state.insert(starting_point, killed_player);
             }
 
+            self.refill_food();
+
             for player in self.state.players.iter_mut() {
                 _ = player.tx.send(()).await;
             }
-
-            debug!("{:#?}", self.state.players);
         }
-
+        debug!("NO PLAYERS STOP");
         self.state
             .is_running
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -438,7 +467,10 @@ impl Server {
     fn random_free_point(self: &Arc<Self>) -> Point {
         let mut rng = rand::thread_rng();
         let mut point: Point = rng.gen();
-        while self.state.map_state.contains_key(&point) || !self.is_in_map(&point) {
+        while !self.is_in_map(&point)
+            || self.state.map_state.contains_key(&point)
+            || self.state.food.contains(&point)
+        {
             point = rng.gen();
         }
         point
@@ -457,6 +489,14 @@ impl Server {
             Point { x, y: _ } if *x >= field_width => false,
             Point { x: _, y } if *y >= field_height => false,
             _ => true,
+        }
+    }
+
+    fn refill_food(self: &Arc<Self>) {
+        let curr_food_count = self.state.food.len();
+        for _ in curr_food_count..self.args.food_count {
+            let food = self.random_free_point();
+            self.state.food.insert(food);
         }
     }
 }

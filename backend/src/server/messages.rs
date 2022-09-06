@@ -1,7 +1,7 @@
 use crate::server::Direction;
 use serde::{Deserialize, Serialize};
 
-use super::snake::Snake;
+use super::{snake::Snake, Point};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
@@ -11,8 +11,14 @@ pub enum ClientMessage {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
-    Register { field_width: i8, field_height: i8 },
-    Turn { players: Vec<Snake> },
+    Register {
+        field_width: i8,
+        field_height: i8,
+    },
+    Turn {
+        players: Vec<Snake>,
+        food: Vec<Point>,
+    },
 }
 
 #[cfg(test)]
@@ -38,6 +44,11 @@ mod tests {
                 },
                 crate::server::Direction::Down,
             )],
+            food: vec![
+                Point { x: 1, y: 2 },
+                Point { x: 1, y: 3 },
+                Point { x: 1, y: 5 },
+            ],
         };
 
         let serialized = serde_json::to_string(&msg);

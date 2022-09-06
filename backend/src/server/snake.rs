@@ -1,4 +1,3 @@
-use log::debug;
 use serde::{Deserialize, Serialize};
 
 use super::{Colour, Direction, Point};
@@ -6,7 +5,7 @@ use std::collections::VecDeque;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Snake {
-    parts: VecDeque<Point>,
+    pub parts: VecDeque<Point>,
     colour: Colour,
     direction: Direction,
 }
@@ -22,7 +21,7 @@ impl Snake {
 
     pub fn do_move(&mut self) -> (Point, Point) {
         let new_head = *self.parts.front().unwrap() + self.direction;
-        let last = self.parts.pop_back().unwrap();
+        let last = self.parts.back().unwrap().clone();
         self.parts.push_front(new_head);
         (new_head, last)
     }
@@ -34,7 +33,10 @@ impl Snake {
     }
 
     pub fn set_direction(&mut self, direction: Direction) {
-        debug!("Really setting direction to {:#?}", direction);
         self.direction = direction;
+    }
+
+    pub fn pop_last(&mut self) {
+        self.parts.pop_back();
     }
 }

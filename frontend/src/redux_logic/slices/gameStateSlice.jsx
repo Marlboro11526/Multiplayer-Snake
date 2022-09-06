@@ -6,6 +6,7 @@ export const gameSlice = createSlice({
 		players: [],
 		arena_width: null,
 		arena_height: null,
+		food: [],
 	},
 	reducers: {
 		setPlayers: (state, action) => {
@@ -29,10 +30,16 @@ export const gameSlice = createSlice({
 				arena_height: action.payload,
 			};
 		},
+		setFood: (state, action) => {
+			return {
+				...state,
+				food: action.payload,
+			};
+		},
 	},
 });
 
-export const { setPlayers, setArenaWidth, setArenaHeight, setDirection } =
+export const { setPlayers, setArenaWidth, setArenaHeight, setFood } =
 	gameSlice.actions;
 
 export default gameSlice.reducer;

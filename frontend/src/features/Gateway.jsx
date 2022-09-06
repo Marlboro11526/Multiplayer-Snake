@@ -2,6 +2,7 @@ import { backendUrl } from "../routes";
 import {
 	setArenaHeight,
 	setArenaWidth,
+	setFood,
 	setPlayers,
 } from "../redux_logic/slices/gameStateSlice";
 
@@ -96,7 +97,7 @@ class Gateway {
 }
 
 const registerCallback = (message) => {
-	console.debug("Register", "Register" in message);
+	// console.debug("Register", "Register" in message);
 	if (!("Register" in message)) {
 		return;
 	}
@@ -109,14 +110,16 @@ const registerCallback = (message) => {
 };
 
 const turnCallback = (message) => {
-	console.debug("Turn", "Turn" in message);
+	// console.debug("Turn", "Turn" in message);
 	if (!("Turn" in message)) {
 		return;
 	}
-	console.debug(message["Turn"]);
+	// console.debug(message["Turn"]);
 	const players = message["Turn"]["players"];
+	const food = message["Turn"]["food"];
 	// console.debug("Message players:", players);
 	store.dispatch(setPlayers(players));
+	store.dispatch(setFood(food));
 };
 
 export default Gateway;
