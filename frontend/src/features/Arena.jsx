@@ -34,13 +34,17 @@ export function Arena() {
 			case "ArrowRight":
 				direction = "Right";
 				break;
+			default:
+				return;
 		}
 
-		gateway.send({
-			Turn: {
-				direction: direction,
-			},
-		});
+		if (direction) {
+			gateway.send({
+				Turn: {
+					direction: direction,
+				},
+			});
+		}
 	};
 
 	const renderTile = (tile, col_num, row_num) => {
@@ -51,7 +55,7 @@ export function Arena() {
 				style={{
 					backgroundColor: tile
 						? `rgb(${tile["r"]},${tile["g"]},${tile["b"]})`
-						: "rgb(33, 32, 32)",
+						: "rgb(37, 37, 37)",
 				}}
 			>
 				({col_num}, {row_num})
