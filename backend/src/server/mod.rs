@@ -23,7 +23,7 @@ use tokio::{
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 use uuid::Uuid;
 
-use self::types::{Colour, Direction, PlayerData, Point, State};
+use self::types::{Colour, Direction, FieldHeightT, FieldWidthT, PlayerData, Point, State};
 use self::{
     errors::*,
     messages::{ClientMessage, ServerMessage},
@@ -45,11 +45,11 @@ pub struct Args {
 
     /// Field width in blocks
     #[clap(short = 'w', value_parser, default_value_t = 15)]
-    field_width: i8,
+    field_width: FieldWidthT,
 
     /// Field height in blocks
     #[clap(short = 'h', value_parser, default_value_t = 10)]
-    field_height: i8,
+    field_height: FieldHeightT,
 
     /// Game tick in miliseconds
     #[clap(short = 't', value_parser, default_value_t = 500)]
@@ -237,8 +237,7 @@ impl Server {
             .map(|entry| entry.value().snake.clone())
             .collect();
         let food = self.state.food.iter().map(|entry| *entry.key()).collect();
-        let scores = self.state.players.iter().map(|entry| (*entry.key(), entry.value().score)).collect();
-        let msg = ServerMessage::Turn { players, food, scores };
+        let msg = ServerMessage::Turn { players, food };
         Server::send_message(sink, &msg)
             .await
             .change_context(ConnectionError)

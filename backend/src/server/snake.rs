@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Snake {
     pub parts: VecDeque<Point>,
-    colour: Colour,
+    pub colour: Colour,
     direction: Direction,
 }
 

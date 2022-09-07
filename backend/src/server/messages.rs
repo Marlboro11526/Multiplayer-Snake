@@ -1,10 +1,11 @@
-use std::collections::HashMap;
-
 use crate::server::Direction;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use super::{snake::Snake, Point};
+use super::{
+    snake::Snake,
+    types::{FieldHeightT, FieldWidthT},
+    Point,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
@@ -15,13 +16,12 @@ pub enum ClientMessage {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     Register {
-        field_width: i8,
-        field_height: i8,
+        field_width: FieldWidthT,
+        field_height: FieldHeightT,
     },
     Turn {
         players: Vec<Snake>,
         food: Vec<Point>,
-        scores: HashMap<Uuid, usize>,
     },
 }
 
@@ -53,7 +53,6 @@ mod tests {
                 Point { x: 1, y: 3 },
                 Point { x: 1, y: 5 },
             ],
-            scores : [(Uuid::new_v4(), 5)].into_iter().collect(),
         };
 
         let serialized = serde_json::to_string(&msg);

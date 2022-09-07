@@ -8,6 +8,11 @@ use uuid::Uuid;
 
 use super::snake::Snake;
 
+pub type Score = usize;
+pub type Name = String;
+pub type FieldWidthT = isize;
+pub type FieldHeightT = isize;
+
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum Direction {
@@ -35,8 +40,8 @@ impl Add<Direction> for Point {
 
 #[derive(Debug, Hash, PartialEq, Eq, Copy, Clone, Serialize, Deserialize)]
 pub struct Point {
-    pub x: i8,
-    pub y: i8,
+    pub x: FieldWidthT,
+    pub y: FieldWidthT,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -77,10 +82,11 @@ impl Distribution<Colour> for Standard {
 
 #[derive(Debug)]
 pub struct PlayerData {
+    pub name: Option<String>,
     pub snake: Snake,
     pub last_move: Option<Direction>,
     pub tx: Sender<()>,
-    pub score: usize,
+    pub score: Score,
 }
 
 impl PlayerData {
@@ -91,6 +97,7 @@ impl PlayerData {
         tx: Sender<()>,
     ) -> Self {
         PlayerData {
+            name: None,
             snake: Snake::new(VecDeque::from([starting_point]), colour, direction),
             last_move: None,
             tx,
