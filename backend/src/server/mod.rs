@@ -23,11 +23,12 @@ use tokio::{
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 use uuid::Uuid;
 
-use self::types::{Colour, Direction, FieldHeightT, FieldWidthT, PlayerData, Point, State};
+use self::types::{
+    Colour, Direction, FieldHeightT, FieldWidthT, PlayerData, PlayerInfo, Point, State,
+};
 use self::{
     errors::*,
     messages::{ClientMessage, ServerMessage},
-    snake::Snake,
 };
 
 #[derive(Parser, Debug)]
@@ -174,7 +175,7 @@ impl Server {
         loop {
             tokio::select! {
                     _ = rx.recv() => {
-                        self.send_turn_message(&mut sink).await?
+                        self.send_turn_message(&uuid, &mut sink).await?
                     }
                     ws_msg = stream.next() => match ws_msg {
                         Some(msg) => match msg {
@@ -228,13 +229,21 @@ impl Server {
 
     async fn send_turn_message(
         self: &Arc<Self>,
+        uuid: &Uuid,
         sink: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
     ) -> Result<(), ConnectionError> {
-        let players: Vec<Snake> = self
+        let players: Vec<PlayerInfo> = self
             .state
             .players
             .iter()
-            .map(|entry| entry.value().snake.clone())
+            .map(|entry| {
+                (
+                    entry.value().snake.clone(),
+                    uuid.clone(),
+                    entry.value().name.clone(),
+                    entry.value().score,
+                )
+            })
             .collect();
         let food = self.state.food.iter().map(|entry| *entry.key()).collect();
         let msg = ServerMessage::Turn { players, food };

@@ -13,6 +13,8 @@ pub type Name = String;
 pub type FieldWidthT = isize;
 pub type FieldHeightT = isize;
 
+pub type PlayerInfo = (Snake, Uuid, Name, Score);
+
 #[repr(u8)]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum Direction {
@@ -82,7 +84,7 @@ impl Distribution<Colour> for Standard {
 
 #[derive(Debug)]
 pub struct PlayerData {
-    pub name: Option<String>,
+    pub name: String,
     pub snake: Snake,
     pub last_move: Option<Direction>,
     pub tx: Sender<()>,
@@ -97,7 +99,7 @@ impl PlayerData {
         tx: Sender<()>,
     ) -> Self {
         PlayerData {
-            name: None,
+            name: "Unknown".into(),
             snake: Snake::new(VecDeque::from([starting_point]), colour, direction),
             last_move: None,
             tx,

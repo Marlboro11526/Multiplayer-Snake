@@ -2,8 +2,7 @@ use crate::server::Direction;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    snake::Snake,
-    types::{FieldHeightT, FieldWidthT},
+    types::{FieldHeightT, FieldWidthT, PlayerInfo},
     Point,
 };
 
@@ -20,7 +19,7 @@ pub enum ServerMessage {
         field_height: FieldHeightT,
     },
     Turn {
-        players: Vec<Snake>,
+        players: Vec<PlayerInfo>,
         food: Vec<Point>,
     },
 }
@@ -29,24 +28,31 @@ pub enum ServerMessage {
 mod tests {
     use std::collections::VecDeque;
 
+    use uuid::Uuid;
+
     use crate::server::{snake::Snake, Colour, Direction, Point};
 
     use super::*;
     #[test]
     fn serialization() {
         let msg = ServerMessage::Turn {
-            players: vec![Snake::new(
-                VecDeque::from(vec![
-                    Point { x: 1, y: 2 },
-                    Point { x: 1, y: 3 },
-                    Point { x: 1, y: 5 },
-                ]),
-                Colour {
-                    r: 123,
-                    g: 0,
-                    b: 255,
-                },
-                crate::server::Direction::Down,
+            players: vec![(
+                Snake::new(
+                    VecDeque::from(vec![
+                        Point { x: 1, y: 2 },
+                        Point { x: 1, y: 3 },
+                        Point { x: 1, y: 5 },
+                    ]),
+                    Colour {
+                        r: 123,
+                        g: 0,
+                        b: 255,
+                    },
+                    crate::server::Direction::Down,
+                ),
+                Uuid::new_v4(),
+                "Bartek".into(),
+                123,
             )],
             food: vec![
                 Point { x: 1, y: 2 },
