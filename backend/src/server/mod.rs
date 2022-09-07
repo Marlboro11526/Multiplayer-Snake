@@ -127,8 +127,14 @@ impl Server {
         }
 
         let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
-        let (mut sink, stream) = stream.split();
-        let (uuid, rx) = self.spawn_payer();
+        let (mut sink, mut stream) = stream.split();
+        let mut new_player_name: String = "Unknown".into();
+        if let Some(ClientMessage::Register { name }) = self.get_client_message(&mut stream).await?
+        {
+            debug!("New player name: {}", name);
+            new_player_name = name;
+        }
+        let (uuid, rx) = self.spawn_payer(new_player_name);
         Server::send_message(
             &mut sink,
             &ServerMessage::Register {
@@ -139,7 +145,7 @@ impl Server {
         .await
         .change_context(ConnectionError)
         .attach_printable("Unable to send Register message")?;
-
+        self.start_game();
         _ = self.player_loop(sink, stream, uuid, rx).await;
         self.clear_player_parts(&uuid);
         _ = self.state.players.remove(&uuid);
@@ -147,6 +153,23 @@ impl Server {
         Ok(())
     }
 
+    fn start_game(self: &Arc<Self>) {
+        if self.state.is_running.compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        ) == Ok(false)
+        {
+            debug!("RUNNING PLAYERS!");
+            let me = self.clone();
+            tokio::spawn(async move {
+                if let Err(e) = me.game_loop().await {
+                    debug!("{:#?}", e);
+                }
+            });
+        }
+    }
     async fn send_message(
         sink: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
         message: &ServerMessage,
@@ -165,6 +188,30 @@ impl Server {
         Ok(())
     }
 
+    async fn get_client_message(
+        self: &Arc<Self>,
+        stream: &mut SplitStream<WebSocketStream<TcpStream>>,
+    ) -> Result<Option<ClientMessage>, ConnectionError> {
+        if let Some(ws_msg) = stream.next().await {
+            match ws_msg {
+                Ok(Message::Text(json_str)) => {
+                    let message: ClientMessage = serde_json::from_str(&json_str)
+                        .report()
+                        .change_context(ConnectionError)
+                        .attach_printable_lazy(|| {
+                            format!("Invalid message body, got {}", json_str)
+                        })?;
+
+                    Ok(Some(message))
+                }
+                _ => return Err(ConnectionError).report().attach("Invalid message"),
+            }
+        } else {
+            debug!("Connection ended");
+            return Ok(None);
+        }
+    }
+
     async fn player_loop(
         self: &Arc<Self>,
         mut sink: SplitSink<WebSocketStream<TcpStream>, Message>,
@@ -174,63 +221,32 @@ impl Server {
     ) -> Result<(), ConnectionError> {
         loop {
             tokio::select! {
-                    _ = rx.recv() => {
-                        self.send_turn_message(&uuid, &mut sink).await?
-                    }
-                    ws_msg = stream.next() => match ws_msg {
-                        Some(msg) => match msg {
-                            Ok(Message::Text(json_str)) => {
-                                let message: ClientMessage = serde_json::from_str(&json_str)
+            _ = rx.recv() => {
+                self.send_turn_message(&uuid, &mut sink).await?
+            }
+            client_message = self.get_client_message(&mut stream) => {
+                match client_message {
+                    Ok(Some(message)) => match message {
+                        ClientMessage::Turn { direction } => {
+                                if let Some(mut player_state) = self.state.players.get_mut(&uuid) {
+                                    player_state.last_move = Some(direction);
+                                } else {
+                                    return Err(ConnectionError)
                                     .report()
-                                    .change_context(ConnectionError)
-                                    .attach_printable_lazy(|| format!("Invalid message body, got {}", json_str))?;
-
-                                match message {
-                                    ClientMessage::Turn { direction } => {
-                                        if let Some(mut player_state) = self.state.players.get_mut(&uuid) {
-                                            player_state.last_move = Some(direction);
-                                        } else {
-                                            return Err(ConnectionError)
-                                                .report()
-                                                .attach("Game logic broken! Player not in players.")
-                                        }
-                                    },
-                                    ClientMessage::Register { name } => {
-                                        debug!("New player name: {}", name);
-
-                                        // if let Some(mut player_entry) = self.state.players.get_mut(&uuid) {
-                                        //     if player_entry.name != "Unknown" {
-                                        //         return Err(ConnectionError)
-                                        //         .report()
-                                        //         .attach("Register message send twice!")
-                                        //     }
-                                        // }
-
-                                        if self.state.is_running.compare_exchange(
-                                            false,
-                                            true,
-                                            std::sync::atomic::Ordering::SeqCst,
-                                            std::sync::atomic::Ordering::SeqCst,
-                                        ) == Ok(false)
-                                        {
-                                            debug!("RUNNING PLAYERS!");
-                                            let me = self.clone();
-                                            tokio::spawn(async move { me.game_loop().await });
-                                        }
-                                    }
+                                    .attach("Game logic broken! Player not in players.")
                                 }
-                            }
-                            _ => {
-                                return Err(ConnectionError)
-                                    .report()
-                                    .attach("Invalid message")
+                            },
+                            ClientMessage::Register { name: _ } => {
+                                        return Err(ConnectionError)
+                                        .report()
+                                        .attach("Register message send twice!")
+
                             }
                         }
-                        None => {
-                            debug!("Connection ended");
-                            return Ok(())
-                        }
+                    Ok(None) => return Ok(()),
+                    Err(e) => return Err(e),
                     }
+                }
             }
         }
     }
@@ -263,7 +279,7 @@ impl Server {
         Ok(())
     }
 
-    fn spawn_payer(self: &Arc<Self>) -> (Uuid, Receiver<()>) {
+    fn spawn_payer(self: &Arc<Self>, name: String) -> (Uuid, Receiver<()>) {
         let mut rng = ChaCha20Rng::from_entropy();
 
         let uuid = Uuid::new_v4();
@@ -271,7 +287,7 @@ impl Server {
         let direction: Direction = rng.gen();
         let (tx, rx) = channel::<()>(16);
         let starting_point: Point = self.random_free_point();
-        let new_player = PlayerData::new(starting_point, colour, direction, tx);
+        let new_player = PlayerData::new(name, starting_point, colour, direction, tx);
 
         self.state.players.insert(uuid, new_player);
 

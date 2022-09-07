@@ -93,13 +93,14 @@ pub struct PlayerData {
 
 impl PlayerData {
     pub fn new(
+        name: String,
         starting_point: Point,
         colour: Colour,
         direction: Direction,
         tx: Sender<()>,
     ) -> Self {
         PlayerData {
-            name: "Unknown".into(),
+            name,
             snake: Snake::new(VecDeque::from([starting_point]), colour, direction),
             last_move: None,
             tx,
