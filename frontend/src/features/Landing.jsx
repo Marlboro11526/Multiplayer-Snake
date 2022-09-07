@@ -25,6 +25,8 @@ export function Landing() {
 		if (code === 13) {
 			console.debug("sending");
 			const gateway = new Gateway();
+			gateway.start();
+			
 			gateway.send({
 				Register: {
 					name: name,

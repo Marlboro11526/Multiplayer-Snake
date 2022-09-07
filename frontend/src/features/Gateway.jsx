@@ -31,6 +31,7 @@ class Gateway {
 
 	start() {
 		if (!this.started) {
+			console.debug("Starting gateway");
 			this.started = true;
 			this.connection = new WebSocket(backendUrl);
 
@@ -114,7 +115,7 @@ const turnCallback = (message) => {
 	if (!("Turn" in message)) {
 		return;
 	}
-	// console.debug(message["Turn"]);
+	console.debug(message["Turn"]);
 	const players = message["Turn"]["players"];
 	const food = message["Turn"]["food"];
 	// console.debug("Message players:", players);

@@ -336,6 +336,8 @@ impl Server {
             || self.state.food.contains(&point)
         {
             point = rng.gen();
+            point.x %= self.args.field_width;
+            point.y %= self.args.field_width;
         }
         point
     }

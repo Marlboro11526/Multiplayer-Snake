@@ -90,8 +90,9 @@ export function Arena() {
 		}
 
 		for (let player of players) {
-			for (let part of player["parts"]) {
-				tiles[part.y][part.x] = player["colour"];
+			const player_snake = player[0];
+			for (let part of player_snake["parts"]) {
+				tiles[part.y][part.x] = player_snake["colour"];
 			}
 		}
 
