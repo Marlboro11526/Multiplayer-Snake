@@ -99,11 +99,45 @@ export function Arena() {
 		return tiles.map(renderRow);
 	};
 
-	// console.debug(arena_height);
+	const renderLeaderboardEntry = (entry) => {
+		const [colour, uuid, name, score] = entry;
+
+		return (
+			<div
+				className="leaderboardEntry"
+				key={uuid}
+				style={{
+					color: `rgb(${colour["r"]},${colour["g"]},${colour["b"]})`,
+				}}
+			>
+				{name} : {score}
+			</div>
+		);
+	};
+
+	const renderLeaderboard = () => {
+		// 0, 1, 2, 3 = snake id, name, score =>
+		// 0, 1, 2, 3 = colour, id, name, score (sorted)
+		let playersResults = Array.from(
+			players.map((entry) => [
+				entry[0]["colour"],
+				entry[1],
+				entry[2],
+				entry[3],
+			])
+		);
+		playersResults.sort((lhs, rhs) => lhs[2] - rhs[2]);
+		return playersResults.map(renderLeaderboardEntry);
+	};
 
 	return (
-		<div id="arena" onKeyDown={(e) => handleKeyDown(e)} tabIndex="0">
-			{arena_height && renderTiles()};
+		<div>
+			<aside id="leaderboard">
+				{players && players.map(renderLeaderboard)}
+			</aside>
+			<main id="arena" onKeyDown={(e) => handleKeyDown(e)} tabIndex="0">
+				{arena_height && renderTiles()};
+			</main>
 		</div>
 	);
 }

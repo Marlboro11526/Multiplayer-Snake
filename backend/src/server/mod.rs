@@ -198,6 +198,14 @@ impl Server {
                                     ClientMessage::Register { name } => {
                                         debug!("New player name: {}", name);
 
+                                        // if let Some(mut player_entry) = self.state.players.get_mut(&uuid) {
+                                        //     if player_entry.name != "Unknown" {
+                                        //         return Err(ConnectionError)
+                                        //         .report()
+                                        //         .attach("Register message send twice!")
+                                        //     }
+                                        // }
+
                                         if self.state.is_running.compare_exchange(
                                             false,
                                             true,
