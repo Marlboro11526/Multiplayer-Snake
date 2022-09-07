@@ -21,6 +21,7 @@ futures = "0.3.23"
 futures-util = "0.3.23"
 parking_lot = "0.12.1"
 rand = "*"
+rand_chacha = "0.3.0"
 
 [dependencies.uuid]
 version = "1.1.2"
@@ -28,4 +29,5 @@ features = [
     "v4",                # Lets you generate random UUIDs
     "fast-rng",          # Use a faster (but still sufficiently random) RNG
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+    "serde",
 ]

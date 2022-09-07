@@ -9,7 +9,8 @@ use error_stack::{IntoReport, Report, Result, ResultExt};
 use futures::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, info};
-use rand::Rng;
+use rand::prelude::*;
+use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicBool;
 use std::{net::SocketAddr, sync::Arc, time::Duration};
@@ -22,7 +23,7 @@ use tokio::{
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 use uuid::Uuid;
 
-use self::types::{Colour, Direction, Point, State, PlayerData};
+use self::types::{Colour, Direction, PlayerData, Point, State};
 use self::{
     errors::*,
     messages::{ClientMessage, ServerMessage},
@@ -139,11 +140,9 @@ impl Server {
         .attach_printable("Unable to send Register message")?;
 
         _ = self.player_loop(sink, stream, uuid, rx).await;
-        if let Some(entry) = self.state.players.remove(&uuid) {
-            for p in &entry.1.snake.parts {
-                self.state.map_state.remove(p);
-            }
-        }
+        self.clear_player_parts(&uuid);
+        _ = self.state.players.remove(&uuid);
+
         Ok(())
     }
 
@@ -238,7 +237,8 @@ impl Server {
             .map(|entry| entry.value().snake.clone())
             .collect();
         let food = self.state.food.iter().map(|entry| *entry.key()).collect();
-        let msg = ServerMessage::Turn { players, food };
+        let scores = self.state.players.iter().map(|entry| (*entry.key(), entry.value().score)).collect();
+        let msg = ServerMessage::Turn { players, food, scores };
         Server::send_message(sink, &msg)
             .await
             .change_context(ConnectionError)
@@ -248,7 +248,7 @@ impl Server {
     }
 
     fn spawn_payer(self: &Arc<Self>) -> (Uuid, Receiver<()>) {
-        let mut rng = rand::thread_rng();
+        let mut rng = ChaCha20Rng::from_entropy();
 
         let uuid = Uuid::new_v4();
         let colour: Colour = rng.gen();
@@ -299,6 +299,7 @@ impl Server {
             for killed_player in killed_players {
                 let starting_point = self.random_free_point();
                 let direction = self.random_direction();
+                self.clear_player_parts(&killed_player);
                 if let Some(mut player_data) = self.state.players.get_mut(&killed_player) {
                     player_data.killed_restart(starting_point, direction)
                 }
@@ -320,7 +321,7 @@ impl Server {
     }
 
     fn random_free_point(self: &Arc<Self>) -> Point {
-        let mut rng = rand::thread_rng();
+        let mut rng = ChaCha20Rng::from_entropy();
         let mut point: Point = rng.gen();
         while !self.is_in_map(&point)
             || self.state.map_state.contains_key(&point)
@@ -332,7 +333,7 @@ impl Server {
     }
 
     fn random_direction(self: &Arc<Self>) -> Direction {
-        let mut rng = rand::thread_rng();
+        let mut rng = ChaCha20Rng::from_entropy();
         rng.gen()
     }
 
@@ -352,6 +353,14 @@ impl Server {
         for _ in curr_food_count..self.args.food_count {
             let food = self.random_free_point();
             self.state.food.insert(food);
+        }
+    }
+
+    fn clear_player_parts(self: &Arc<Self>, uuid: &Uuid) {
+        if let Some(entry) = self.state.players.get_mut(uuid) {
+            for p in &entry.snake.parts {
+                self.state.map_state.remove(p);
+            }
         }
     }
 }

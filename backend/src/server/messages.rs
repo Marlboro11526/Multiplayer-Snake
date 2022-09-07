@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+
 use crate::server::Direction;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::{snake::Snake, Point};
 
@@ -18,6 +21,7 @@ pub enum ServerMessage {
     Turn {
         players: Vec<Snake>,
         food: Vec<Point>,
+        scores: HashMap<Uuid, usize>,
     },
 }
 
@@ -49,6 +53,7 @@ mod tests {
                 Point { x: 1, y: 3 },
                 Point { x: 1, y: 5 },
             ],
+            scores : [(Uuid::new_v4(), 5)].into_iter().collect(),
         };
 
         let serialized = serde_json::to_string(&msg);
