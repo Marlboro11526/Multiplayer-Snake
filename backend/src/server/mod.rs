@@ -88,7 +88,7 @@ impl Server {
     }
 
     pub async fn run(self: &Arc<Self>) -> Result<(), ServerError> {
-        let addr = format!("127.0.0.1:{}", self.args.port).to_string();
+        let addr = format!("172.31.85.112:{}", self.args.port).to_string();
         let listener = TcpListener::bind(&addr).await.map_err(|e| {
             Report::new(ServerError).attach_printable(format!("Unable to start server! {:?}", e))
         })?;
