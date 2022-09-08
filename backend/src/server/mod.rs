@@ -135,6 +135,7 @@ impl Server {
             new_player_name = name;
         }
         let (uuid, rx) = self.spawn_payer(new_player_name);
+        debug!("New player uuid: {}", uuid);
         Server::send_message(
             &mut sink,
             &ServerMessage::Register {
@@ -222,7 +223,7 @@ impl Server {
         loop {
             tokio::select! {
             _ = rx.recv() => {
-                self.send_turn_message(&uuid, &mut sink).await?
+                self.send_turn_message(&mut sink).await?
             }
             client_message = self.get_client_message(&mut stream) => {
                 match client_message {
@@ -253,7 +254,6 @@ impl Server {
 
     async fn send_turn_message(
         self: &Arc<Self>,
-        uuid: &Uuid,
         sink: &mut SplitSink<WebSocketStream<TcpStream>, Message>,
     ) -> Result<(), ConnectionError> {
         let players: Vec<PlayerInfo> = self
@@ -263,7 +263,7 @@ impl Server {
             .map(|entry| {
                 (
                     entry.value().snake.clone(),
-                    uuid.clone(),
+                    entry.key().clone(),
                     entry.value().name.clone(),
                     entry.value().score,
                 )
@@ -283,6 +283,7 @@ impl Server {
         let mut rng = ChaCha20Rng::from_entropy();
 
         let uuid = Uuid::new_v4();
+        assert!(!self.state.players.contains_key(&uuid));
         let colour: Colour = rng.gen();
         let direction: Direction = rng.gen();
         let (tx, rx) = channel::<()>(16);

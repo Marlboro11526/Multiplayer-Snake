@@ -55,11 +55,9 @@ export function Arena() {
 				style={{
 					backgroundColor: tile
 						? `rgb(${tile["r"]},${tile["g"]},${tile["b"]})`
-						: "rgb(37, 37, 37)",
+						: "rgb(0, 0, 0)",
 				}}
-			>
-				({col_num}, {row_num})
-			</div>
+			/>
 		);
 	};
 
@@ -101,13 +99,13 @@ export function Arena() {
 
 	const renderLeaderboardEntry = (entry) => {
 		const [colour, uuid, name, score] = entry;
-
+		console.debug("Leaderboard entry: ", entry);
 		return (
 			<div
 				className="leaderboardEntry"
 				key={uuid}
 				style={{
-					color: `rgb(${colour["r"]},${colour["g"]},${colour["b"]})`,
+					backgroundColor: `rgb(${colour["r"]},${colour["g"]},${colour["b"]})`,
 				}}
 			>
 				{name} : {score}
@@ -126,14 +124,16 @@ export function Arena() {
 				entry[3],
 			])
 		);
-		playersResults.sort((lhs, rhs) => lhs[2] - rhs[2]);
+		playersResults.sort((lhs, rhs) => rhs[3] - lhs[3]);
+		console.debug("Leaderboard: ", playersResults);
 		return playersResults.map(renderLeaderboardEntry);
 	};
-
+	console.debug(players);
 	return (
-		<div>
+		<div id="arena_leaderboard_div">
 			<aside id="leaderboard">
-				{players && players.map(renderLeaderboard)}
+				<p id="leaderboard_header">Leaderboard</p>
+				{players && renderLeaderboard(players)}
 			</aside>
 			<main id="arena" onKeyDown={(e) => handleKeyDown(e)} tabIndex="0">
 				{arena_height && renderTiles()};
