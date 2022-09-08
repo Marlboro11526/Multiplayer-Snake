@@ -45,19 +45,19 @@ pub struct Args {
     max_players_count: usize,
 
     /// Field width in blocks
-    #[clap(short = 'w', value_parser, default_value_t = 15)]
+    #[clap(short = 'w', value_parser, default_value_t = 30)]
     field_width: FieldWidthT,
 
     /// Field height in blocks
-    #[clap(short = 'h', value_parser, default_value_t = 10)]
+    #[clap(short = 'h', value_parser, default_value_t = 20)]
     field_height: FieldHeightT,
 
     /// Game tick in miliseconds
-    #[clap(short = 't', value_parser, default_value_t = 500)]
+    #[clap(short = 't', value_parser, default_value_t = 50)]
     game_tick: u64,
 
     /// Food count on map
-    #[clap(short = 'f', value_parser, default_value_t = 5)]
+    #[clap(short = 'f', value_parser, default_value_t = 10)]
     food_count: usize,
 }
 
@@ -205,11 +205,11 @@ impl Server {
 
                     Ok(Some(message))
                 }
-                _ => return Err(ConnectionError).report().attach("Invalid message"),
+                _ => Err(ConnectionError).report().attach("Invalid message"),
             }
         } else {
             debug!("Connection ended");
-            return Ok(None);
+            Ok(None)
         }
     }
 
@@ -263,7 +263,7 @@ impl Server {
             .map(|entry| {
                 (
                     entry.value().snake.clone(),
-                    entry.key().clone(),
+                    *entry.key(),
                     entry.value().name.clone(),
                     entry.value().score,
                 )
