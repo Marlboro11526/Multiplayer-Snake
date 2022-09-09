@@ -5,4 +5,4 @@ Game written in React with Rust server
 
 ## Try it out!
 
-http://3.122.216.190/landing
+http://3.122.216.190
