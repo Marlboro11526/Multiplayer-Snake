@@ -12,6 +12,7 @@ use log::{debug, info};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use std::collections::{HashMap, HashSet};
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::atomic::AtomicBool;
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::sync::mpsc::{channel, Receiver};
@@ -36,6 +37,9 @@ use self::{
 #[clap(author = "Bartek Sadlej <sadlejbartek@gmail.com>")]
 #[clap(version, about, long_about = None)]
 pub struct Args {
+    /// Server IP address to use
+    #[clap(short='a', value_parser, default_value_t=IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))]
+    address: IpAddr,
     /// Port to use
     #[clap(short = 'p', value_parser, default_value_t = 43210)]
     port: u16,
@@ -53,7 +57,7 @@ pub struct Args {
     field_height: FieldHeightT,
 
     /// Game tick in miliseconds
-    #[clap(short = 't', value_parser, default_value_t = 50)]
+    #[clap(short = 't', value_parser, default_value_t = 100)]
     game_tick: u64,
 
     /// Food count on map
@@ -88,7 +92,7 @@ impl Server {
     }
 
     pub async fn run(self: &Arc<Self>) -> Result<(), ServerError> {
-        let addr = format!("172.31.85.112:{}", self.args.port).to_string();
+        let addr = format!("{}:{}", self.args.address, self.args.port).to_string();
         let listener = TcpListener::bind(&addr).await.map_err(|e| {
             Report::new(ServerError).attach_printable(format!("Unable to start server! {:?}", e))
         })?;
