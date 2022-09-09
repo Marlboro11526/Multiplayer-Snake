@@ -55,6 +55,30 @@ body {
 		"Lucida Sans", Arial, sans-serif;
 }
 
+#landing {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+}
+
+#landing_text {
+	font-family: sans-serif;
+	font-size: 5vh;
+	color: #34ace0;
+	font-weight: 600;
+}
+
+#move_info {
+	font-family: sans-serif;
+	font-size: 2vh;
+	font-weight: 600;
+}
+
+#name-input {
+	margin: auto;
+	/* border-radius: 5%; */
+}
 .arena-row {
 	display: flex;
 	flex-direction: row;

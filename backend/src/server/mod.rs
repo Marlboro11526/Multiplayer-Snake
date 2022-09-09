@@ -338,7 +338,8 @@ impl Server {
                 let direction = self.random_direction();
                 self.clear_player_parts(&killed_player);
                 if let Some(mut player_data) = self.state.players.get_mut(&killed_player) {
-                    player_data.killed_restart(starting_point, direction)
+                    player_data.killed_restart(starting_point, direction);
+                    player_data.score = 0;
                 }
                 self.state.map_state.insert(starting_point, killed_player);
             }

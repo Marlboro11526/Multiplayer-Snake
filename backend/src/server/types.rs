@@ -104,7 +104,7 @@ impl PlayerData {
             snake: Snake::new(VecDeque::from([starting_point]), colour, direction),
             last_move: None,
             tx,
-            score: 1,
+            score: 0,
         }
     }
 

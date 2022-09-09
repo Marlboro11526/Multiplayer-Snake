@@ -26,7 +26,7 @@ export function Landing() {
 			console.debug("sending");
 			const gateway = new Gateway();
 			gateway.start();
-			
+
 			gateway.send({
 				Register: {
 					name: name,
@@ -37,8 +37,9 @@ export function Landing() {
 	};
 
 	return (
-		<div className="landing">
-			<div className="register">
+		<div id="landing">
+			<p id="landing_text">Join the game!</p>
+			<div id="register">
 				<input
 					id="name-input"
 					type="text"
@@ -46,8 +47,12 @@ export function Landing() {
 					value={name}
 					onChange={(event) => setName(event.target.value)}
 					onKeyUp={detectStart}
+					autoComplete="off"
 				/>
 			</div>
+			<p id="move_info">
+				move with (&larr;, &uarr;, &rarr;, &darr;) or (a, w, d, s){" "}
+			</p>
 		</div>
 	);
 }

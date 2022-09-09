@@ -33,7 +33,13 @@ impl Snake {
     }
 
     pub fn set_direction(&mut self, direction: Direction) {
-        self.direction = direction;
+        match (self.direction, direction) {
+            (Direction::Up, Direction::Down) => return,
+            (Direction::Right, Direction::Left) => return,
+            (Direction::Down, Direction::Up) => return,
+            (Direction::Left, Direction::Right) => return,
+            _ => self.direction = direction
+        }
     }
 
     pub fn pop_last(&mut self) {
