@@ -10,6 +10,7 @@ export function Arena() {
 	const arena_height = useSelector((state) => state.gameState.arena_height);
 	const players = useSelector((state) => state.gameState.players);
 	const food = useSelector((state) => state.gameState.food);
+	const uuid = useSelector((state) => state.userState.uuid);
 
 	const gateway = new Gateway();
 
@@ -23,15 +24,19 @@ export function Arena() {
 		let direction = null;
 		switch (key) {
 			case "ArrowDown":
+			case "s":
 				direction = "Down";
 				break;
 			case "ArrowUp":
+			case "w":
 				direction = "Up";
 				break;
 			case "ArrowLeft":
+			case "a":
 				direction = "Left";
 				break;
 			case "ArrowRight":
+			case "d":
 				direction = "Right";
 				break;
 			default:
@@ -48,14 +53,21 @@ export function Arena() {
 	};
 
 	const renderTile = (tile, col_num, row_num) => {
+		const colour =
+			tile && tile["colour"]
+				? `rgb(${tile["colour"]["r"]},${tile["colour"]["g"]},${tile["colour"]["b"]})`
+				: "rgb(0, 0, 0)";
+
 		return (
 			<div
 				className="tile"
 				key={arena_width * row_num + col_num}
 				style={{
-					backgroundColor: tile
-						? `rgb(${tile["r"]},${tile["g"]},${tile["b"]})`
-						: "rgb(0, 0, 0)",
+					backgroundColor: colour,
+					boxShadow:
+						tile && tile["uuid"] && uuid == tile["uuid"]
+							? `0px 0px 5px 5px white`
+							: "0px 0px 0px 0px",
 				}}
 			/>
 		);
@@ -84,13 +96,16 @@ export function Arena() {
 		}
 
 		for (let point of food) {
-			tiles[point.y][point.x] = { r: 0, g: 255, b: 0 };
+			tiles[point.y][point.x] = { colour: { r: 0, g: 255, b: 0 } };
 		}
 
 		for (let player of players) {
 			const player_snake = player[0];
 			for (let part of player_snake["parts"]) {
-				tiles[part.y][part.x] = player_snake["colour"];
+				tiles[part.y][part.x] = {
+					colour: player_snake["colour"],
+					uuid: player[1],
+				};
 			}
 		}
 
@@ -99,7 +114,6 @@ export function Arena() {
 
 	const renderLeaderboardEntry = (entry) => {
 		const [colour, uuid, name, score] = entry;
-		console.debug("Leaderboard entry: ", entry);
 		return (
 			<div
 				className="leaderboardEntry"
@@ -125,10 +139,9 @@ export function Arena() {
 			])
 		);
 		playersResults.sort((lhs, rhs) => rhs[3] - lhs[3]);
-		console.debug("Leaderboard: ", playersResults);
 		return playersResults.map(renderLeaderboardEntry);
 	};
-	console.debug(players);
+
 	return (
 		<div id="arena_leaderboard_div">
 			<aside id="leaderboard">

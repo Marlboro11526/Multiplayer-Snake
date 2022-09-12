@@ -145,6 +145,7 @@ impl Server {
             &ServerMessage::Register {
                 field_width: self.args.field_width,
                 field_height: self.args.field_height,
+                uuid,
             },
         )
         .await

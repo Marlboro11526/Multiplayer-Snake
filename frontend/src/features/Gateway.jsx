@@ -7,6 +7,7 @@ import {
 } from "../redux_logic/slices/gameStateSlice";
 
 import store from "../redux_logic/store";
+import { setUuid } from "../redux_logic/slices/userSlice";
 
 class Gateway {
 	constructor() {
@@ -57,8 +58,7 @@ class Gateway {
 	}
 
 	on_message(message) {
-		// console.debug(JSON.parse(message.data));
-		// console.debug(message.data);
+
 		for (const cb of this.callbacks) {
 			cb(JSON.parse(message.data));
 		}
@@ -98,27 +98,29 @@ class Gateway {
 }
 
 const registerCallback = (message) => {
-	// console.debug("Register", "Register" in message);
+
 	if (!("Register" in message)) {
 		return;
 	}
-	// console.debug(message["Register"]);
+
 	const width = message["Register"]["field_width"];
 	const height = message["Register"]["field_height"];
-	// console.debug(width, height);
+	const uuid = message["Register"]["uuid"];
+
 	store.dispatch(setArenaWidth(width));
 	store.dispatch(setArenaHeight(height));
+	store.dispatch(setUuid(uuid));
 };
 
 const turnCallback = (message) => {
-	// console.debug("Turn", "Turn" in message);
+
 	if (!("Turn" in message)) {
 		return;
 	}
-	console.debug(message["Turn"]);
+
 	const players = message["Turn"]["players"];
 	const food = message["Turn"]["food"];
-	// console.debug("Message players:", players);
+
 	store.dispatch(setPlayers(players));
 	store.dispatch(setFood(food));
 };

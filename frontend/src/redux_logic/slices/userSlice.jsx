@@ -9,14 +9,14 @@ export const userSlice = createSlice({
 	reducers: {
 		setName: (state, action) => {
 			return {
-				name: action.payload,
 				...state,
+				name: action.payload,
 			};
 		},
 		setUuid: (state, action) => {
 			return {
-				uuid: action.payload,
 				...state,
+				uuid: action.payload,
 			};
 		},
 	},

@@ -10,15 +10,12 @@ export const gameSlice = createSlice({
 	},
 	reducers: {
 		setPlayers: (state, action) => {
-			// console.debug("Set players", action);
 			return {
 				...state,
 				players: action.payload,
 			};
 		},
 		setArenaWidth: (state, action) => {
-			// console.debug(action);
-			// console.debug("action payload: ", action.payload);
 			return {
 				...state,
 				arena_width: action.payload,

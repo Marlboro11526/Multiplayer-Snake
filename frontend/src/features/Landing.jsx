@@ -23,7 +23,6 @@ export function Landing() {
 	const detectStart = (e) => {
 		let code = e.which || e.keyCode;
 		if (code === 13) {
-			console.debug("sending");
 			const gateway = new Gateway();
 			gateway.start();
 

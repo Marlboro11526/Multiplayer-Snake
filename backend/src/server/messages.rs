@@ -1,5 +1,6 @@
 use crate::server::Direction;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::{
     types::{FieldHeightT, FieldWidthT, PlayerInfo},
@@ -17,6 +18,7 @@ pub enum ServerMessage {
     Register {
         field_width: FieldWidthT,
         field_height: FieldHeightT,
+        uuid: Uuid,
     },
     Turn {
         players: Vec<PlayerInfo>,
